@@ -5,7 +5,7 @@
 
 Nätverksskanner som körs direkt i Home Assistant. Visar alla enheter på ditt lokala nätverk med IP-adress, MAC-adress, vendor, hostname och enhetsnamn.
 
-![NetScan screenshot](https://raw.githubusercontent.com/Cm0n89/ha-netscan/main/docs/screenshot.png)
+<img width="1638" height="776" alt="image" src="https://github.com/user-attachments/assets/a050da11-0bf0-4e2a-9941-cb75350250be" />
 
 ## Installation
 
