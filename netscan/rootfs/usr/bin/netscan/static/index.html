@@ -169,18 +169,22 @@
 <div class="header">
   <div class="logo">NET<span>::</span>SCAN</div>
   <div class="hdr-meta">
-    <div>SENASTE SCAN: <span id="lastScan" style="color:var(--text)">—</span></div>
+    <div><span id="lbl-last-scan">SENASTE SCAN</span>: <span id="lastScan" style="color:var(--text)">—</span></div>
     <div>STATUS: <span id="scanStatus" class="live">● IDLE</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:0;margin-left:12px">
+    <button class="method-btn active" id="langSv" onclick="setLang('sv')">SV</button>
+    <button class="method-btn" id="langEn" onclick="setLang('en')">EN</button>
   </div>
 </div>
 
 <!-- Toolbar -->
 <div class="toolbar">
-  <button id="btnScan" class="btn btn-scan">⟳ SCANNA NU</button>
-  <button id="btnFetchAll" class="btn btn-fetch-all" title="Hämta enhetsnamn för alla enheter utan namn">⟳ HÄMTA ALLA NAMN</button>
-  <span class="label">SEGMENT</span>
+  <button id="btnScan" class="btn btn-scan">⟳ SCAN NOW</button>
+  <button id="btnFetchAll" class="btn btn-fetch-all" title="Fetch device names for all unnamed devices">⟳ FETCH ALL NAMES</button>
+  <span class="label" id="lbl-segment">SEGMENT</span>
   <input id="segInput" class="seg-input" placeholder="192.168.1.0/24" />
-  <span class="label">METOD</span>
+  <span class="label" id="lbl-method">METOD</span>
   <div style="display:flex">
     <button class="method-btn active" id="methodNmap" onclick="setMethod('nmap')">nmap</button>
     <button class="method-btn" id="methodPython" onclick="setMethod('python')">python</button>
@@ -203,8 +207,8 @@
 
 <!-- Search -->
 <div class="search-bar">
-  <span class="label">SÖK</span>
-  <input id="searchInput" class="search-input" placeholder="IP, namn, vendor, MAC, kommentar…" />
+  <span class="label" id="lbl-search">SÖK</span>
+  <input id="searchInput" class="search-input" placeholder="IP, name, vendor, MAC, comment…" />
   <button class="clear-btn" onclick="clearSearch()">✕</button>
 </div>
 
@@ -229,6 +233,117 @@
 <div id="toast" class="toast"></div>
 
 <script>
+  // ── i18n ─────────────────────────────────────────────────────────────────────
+  const T = {
+    sv: {
+      scanNow:        '⟳ SCANNA NU',
+      scanning:       '⟳ SCANNAR…',
+      fetchAll:       '⟳ HÄMTA ALLA NAMN',
+      segment:        'SEGMENT',
+      method:         'METOD',
+      search:         'SÖK',
+      searchPh:       'IP, namn, vendor, MAC, kommentar…',
+      online:         'ONLINE',
+      offline:        'OFFLINE',
+      total:          'TOTALT',
+      lastScan:       'SENASTE SCAN',
+      colStatus:      '',
+      colIp:          'IP-ADRESS ↕',
+      colName:        'ENHETSNAMN ↕',
+      colComment:     'KOMMENTAR',
+      colVendor:      'VENDOR ↕',
+      colHostname:    'HOSTNAME ↕',
+      colMac:         'MAC-ADRESS ↕',
+      commentPh:      'Lägg till kommentar…',
+      fetchBtn:       '⟳ Hämta',
+      fetching:       '⟳ hämtar…',
+      fetched:        (n) => '✓ "' + n + '" hämtat och sparat',
+      noName:         (ip) => '⚠ Inget namn för ' + ip,
+      fetchAllDone:   (f,t) => '✓ ' + f + ' namn hittade av ' + t + ' enheter',
+      allHaveNames:   'Alla enheter har redan ett namn',
+      scanDone:       '✓ Scan klar',
+      scanFailed:     '⚠ Scan misslyckades',
+      removed:        (ip) => '✓ ' + ip + ' borttagen',
+      confirmRemove:  (ip) => 'Ta bort ' + ip + ' från listan?',
+      onlineAgain:    (ip) => '✓ ' + ip + ' är online igen!',
+      stillOffline:   (ip) => ip + ' svarar fortfarande inte',
+      tipOnline:      'Online',
+      tipWarn:        (n) => 'Offline ' + n + ' scan(s)',
+      tipCrit:        (n) => 'Offline ' + n + ' scanningar',
+      nmapFound:      '✓ nmap',
+      nmapMissing:    '✗ nmap',
+    },
+    en: {
+      scanNow:        '⟳ SCAN NOW',
+      scanning:       '⟳ SCANNING…',
+      fetchAll:       '⟳ FETCH ALL NAMES',
+      segment:        'SEGMENT',
+      method:         'METHOD',
+      search:         'SEARCH',
+      searchPh:       'IP, name, vendor, MAC, comment…',
+      online:         'ONLINE',
+      offline:        'OFFLINE',
+      total:          'TOTAL',
+      lastScan:       'LAST SCAN',
+      colStatus:      '',
+      colIp:          'IP ADDRESS ↕',
+      colName:        'DEVICE NAME ↕',
+      colComment:     'COMMENT',
+      colVendor:      'VENDOR ↕',
+      colHostname:    'HOSTNAME ↕',
+      colMac:         'MAC ADDRESS ↕',
+      commentPh:      'Add a comment…',
+      fetchBtn:       '⟳ Fetch',
+      fetching:       '⟳ fetching…',
+      fetched:        (n) => '✓ "' + n + '" fetched and saved',
+      noName:         (ip) => '⚠ No name found for ' + ip,
+      fetchAllDone:   (f,t) => '✓ ' + f + ' names found out of ' + t + ' devices',
+      allHaveNames:   'All devices already have a name',
+      scanDone:       '✓ Scan complete',
+      scanFailed:     '⚠ Scan failed',
+      removed:        (ip) => '✓ ' + ip + ' removed',
+      confirmRemove:  (ip) => 'Remove ' + ip + ' from the list?',
+      onlineAgain:    (ip) => '✓ ' + ip + ' is online again!',
+      stillOffline:   (ip) => ip + ' still not responding',
+      tipOnline:      'Online',
+      tipWarn:        (n) => 'Offline ' + n + ' scan(s)',
+      tipCrit:        (n) => 'Offline ' + n + ' scans',
+      nmapFound:      '✓ nmap',
+      nmapMissing:    '✗ nmap',
+    }
+  };
+  let lang = localStorage.getItem('netscan_lang') || 'en';
+  let t = T[lang];
+
+  function setLang(l) {
+    lang = l; t = T[l];
+    localStorage.setItem('netscan_lang', l);
+    document.getElementById('langSv').classList.toggle('active', l === 'sv');
+    document.getElementById('langEn').classList.toggle('active', l === 'en');
+    applyTranslations();
+    renderTable();
+  }
+
+  function applyTranslations() {
+    document.getElementById('btnScan').textContent    = t.scanNow;
+    document.getElementById('btnFetchAll').textContent= t.fetchAll;
+    document.getElementById('lbl-segment').textContent= t.segment;
+    document.getElementById('lbl-method').textContent = t.method;
+    document.getElementById('lbl-search').textContent = t.search;
+    document.getElementById('lbl-last-scan').textContent = t.lastScan;
+    document.getElementById('searchInput').placeholder = t.searchPh;
+    document.getElementById('statOnlineLbl').textContent  = t.online;
+    document.getElementById('statOfflineLbl').textContent = t.offline;
+    document.getElementById('statTotalLbl').textContent   = t.total;
+    document.getElementById('nmapStatus').textContent =
+      document.getElementById('nmapStatus').dataset.found === 'true' ? t.nmapFound : t.nmapMissing;
+    // Table headers
+    const ths = document.querySelectorAll('th[data-key]');
+    const keys = ['ip','device_name','comment','vendor','hostname','mac'];
+    const lbls = [t.colIp,t.colName,t.colComment,t.colVendor,t.colHostname,t.colMac];
+    ths.forEach((th,i) => { if(lbls[i]) th.textContent = lbls[i]; });
+  }
+
   // ── State ──────────────────────────────────────────────────────────────────
   let devices     = [];
   let comments    = {};
@@ -266,6 +381,9 @@
       setMethod('python');
     }
   }).catch(() => {});
+
+  // Apply saved language
+  setLang(lang);
 
   // Start polling
   poll();
@@ -356,9 +474,9 @@
         !isOnline ? (isCrit ? 'offline-crit' : 'offline-warn') : '',
         comment ? 'commented' : ''
       ].filter(Boolean).join(' ');
-      const tip = isOnline ? 'Online' :
-                  isWarn   ? 'Offline ' + offCount + ' scan(s)' :
-                             'Offline ' + offCount + ' scanningar';
+      const tip = isOnline ? t.tipOnline :
+                  isWarn   ? t.tipWarn(offCount) :
+                             t.tipCrit(offCount);
 
       const rescanBtn = !isOnline ? '<button class="btn-rescan" data-ip="' + d.ip + '" onclick="rescanDevice(this)">⟳</button>' : '';
       const removeBtn = isCrit    ? '<button class="btn-remove" data-ip="' + d.ip + '" onclick="removeDevice(this)">✕</button>' : '';
@@ -396,7 +514,7 @@
     const net  = document.getElementById('segInput').value.trim();
 
     btn.disabled = true;
-    btn.textContent = '⟳ SCANNAR…';
+    btn.textContent = t.scanning;
     prog.innerHTML  = '';
     prog.classList.add('open');
     lastLines = 0;
@@ -437,10 +555,10 @@
 
   function scanDone(btn, prog, ok) {
     btn.disabled = false;
-    btn.textContent = '⟳ SCANNA NU';
+    btn.textContent = t.scanNow;
     setScanStatus(ok ? '● KLAR' : '● FEL', ok ? 'var(--accent2)' : 'var(--accent3)');
     setTimeout(() => setScanStatus('● IDLE', 'var(--accent2)'), 4000);
-    showToast(ok ? '✓ Scan klar' : '⚠ Scan misslyckades');
+    showToast(ok ? t.scanDone : t.scanFailed);
   }
 
   function setScanStatus(text, color) {
@@ -460,12 +578,12 @@
   async function fetchAllNames() {
     const targets = devices.filter(d => !d.device_name);
     if (!targets.length) {
-      showToast('Alla enheter har redan ett namn'); return;
+      showToast(t.allHaveNames); return;
     }
 
     const btn = document.getElementById('btnFetchAll');
     btn.disabled = true;
-    btn.textContent = `⟳ 0/${targets.length}`;
+    btn.textContent = '⟳ 0/' + targets.length;
 
     let done = 0, found = 0;
     for (const d of targets) {
@@ -490,7 +608,7 @@
     }
 
     btn.disabled = false;
-    btn.textContent = '⟳ HÄMTA ALLA NAMN';
+    btn.textContent = t.fetchAll;
     showToast(`✓ ${found} namn hittade av ${targets.length} enheter`);
   }
 
@@ -561,7 +679,7 @@
     const ip  = btn.dataset.ip;
     const mac = btn.dataset.mac;
     btn.classList.add('loading');
-    btn.textContent = '⟳ hämtar…';
+    btn.textContent = t.fetching;
     try {
       const r    = await fetch(apiUrl(`api/device_name?ip=${encodeURIComponent(ip)}`));
       const data = await r.json();
@@ -576,12 +694,12 @@
         showToast(`✓ "${name}" hämtat och sparat`);
       } else {
         btn.classList.remove('loading');
-        btn.textContent = '⟳ Hämta';
+        btn.textContent = t.fetchBtn;
         showToast(`⚠ Inget namn för ${ip}`);
       }
     } catch {
       btn.classList.remove('loading');
-      btn.textContent = '⟳ Hämta';
+      btn.textContent = t.fetchBtn;
     }
   }
 
