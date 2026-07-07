@@ -357,34 +357,36 @@
         comment ? 'commented' : ''
       ].filter(Boolean).join(' ');
       const tip = isOnline ? 'Online' :
-                  isWarn   ? \`Offline \${offCount} scan(s)\` :
-                             \`Offline \${offCount} scanningar\`;
+                  isWarn   ? 'Offline ' + offCount + ' scan(s)' :
+                             'Offline ' + offCount + ' scanningar';
 
-      return \`
-        <tr class="\${rowCls}">
-          <td class="td-status">
-            <div class="action-btns">
-              <span class="dot \${dotCls}" title="\${tip}"></span>
-              \${!isOnline ? \`<button class="btn-rescan" data-ip="\${d.ip}" onclick="rescanDevice(this)">⟳</button>\` : ''}
-              \${isCrit    ? \`<button class="btn-remove" data-ip="\${d.ip}" onclick="removeDevice(this)">✕</button>\` : ''}
-            </div>
-          </td>
-          <td class="td-ip">\${isOnline
-            ? \`<a class="ip-link" href="http://\${d.ip}" target="_blank">\${d.ip}</a>\`
-            : \`<span style="color:var(--dim)">\${d.ip}</span>\`}</td>
-          <td>\${hasName
-            ? \`<span class="name-badge">\${esc(d.device_name)}</span>\`
-            : \`<button class="fetch-btn" data-ip="\${d.ip}" data-mac="\${mac}" onclick="fetchName(this)">⟳ Hämta</button>\`}</td>
-          <td style="min-width:150px">
-            <input class="comment-input" placeholder="Lägg till kommentar…"
-                   value="\${comment}" data-mac="\${mac}" data-ip="\${d.ip}"
-                   oninput="commentInput(this)" onblur="saveComment(this.dataset.mac, this.value)" />
-          </td>
-          <td><span class="vendor-badge \${isUnk ? 'unknown' : ''}">\${esc(vendor || 'Unknown')}</span></td>
-          <td class="td-host \${d.hostname ? '' : 'empty'}">\${esc(d.hostname || '—')}</td>
-          <td class="td-mac">\${esc(mac)}</td>
-        </tr>\`;
+      const rescanBtn = !isOnline ? '<button class="btn-rescan" data-ip="' + d.ip + '" onclick="rescanDevice(this)">⟳</button>' : '';
+      const removeBtn = isCrit    ? '<button class="btn-remove" data-ip="' + d.ip + '" onclick="removeDevice(this)">✕</button>' : '';
+      const ipCell    = isOnline
+        ? '<a class="ip-link" href="http://' + d.ip + '" target="_blank">' + d.ip + '</a>'
+        : '<span style="color:var(--dim)">' + d.ip + '</span>';
+      const nameCell  = hasName
+        ? '<span class="name-badge">' + esc(d.device_name) + '</span>'
+        : '<button class="fetch-btn" data-ip="' + d.ip + '" data-mac="' + mac + '" onclick="fetchName(this)">⟳ Hämta</button>';
+
+      return '<tr class="' + rowCls + '">' +
+        '<td class="td-status"><div class="action-btns">' +
+          '<span class="dot ' + dotCls + '" title="' + tip + '"></span>' +
+          rescanBtn + removeBtn +
+        '</div></td>' +
+        '<td class="td-ip">' + ipCell + '</td>' +
+        '<td>' + nameCell + '</td>' +
+        '<td style="min-width:150px">' +
+          '<input class="comment-input" placeholder="Lägg till kommentar…"' +
+          ' value="' + comment + '" data-mac="' + mac + '" data-ip="' + d.ip + '"' +
+          ' oninput="commentInput(this)" onblur="saveComment(this.dataset.mac, this.value)" />' +
+        '</td>' +
+        '<td><span class="vendor-badge ' + (isUnk ? 'unknown' : '') + '">' + esc(vendor || 'Unknown') + '</span></td>' +
+        '<td class="td-host ' + (d.hostname ? '' : 'empty') + '">' + esc(d.hostname || '—') + '</td>' +
+        '<td class="td-mac">' + esc(mac) + '</td>' +
+        '</tr>';
     }).join('');
+
   }
 
   // ── Scan ───────────────────────────────────────────────────────────────────
