@@ -220,7 +220,7 @@
         <th></th>
         <th onclick="sortBy('ip')">IP-ADRESS ↕</th>
         <th onclick="sortBy('device_name')">ENHETSNAMN ↕</th>
-        <th>KOMMENTAR</th>
+        <th data-key="comment">COMMENT</th>
         <th onclick="sortBy('vendor')">VENDOR ↕</th>
         <th onclick="sortBy('hostname')">HOSTNAME ↕</th>
         <th onclick="sortBy('mac')">MAC-ADRESS ↕</th>
@@ -485,7 +485,7 @@
         : '<span style="color:var(--dim)">' + d.ip + '</span>';
       const nameCell  = hasName
         ? '<span class="name-badge">' + esc(d.device_name) + '</span>'
-        : '<button class="fetch-btn" data-ip="' + d.ip + '" data-mac="' + mac + '" onclick="fetchName(this)">⟳ Hämta</button>';
+        : '<button class="fetch-btn" data-ip="' + d.ip + '" data-mac="' + mac + '" onclick="fetchName(this)">' + t.fetchBtn + '</button>';
 
       return '<tr class="' + rowCls + '">' +
         '<td class="td-status"><div class="action-btns">' +
@@ -495,7 +495,7 @@
         '<td class="td-ip">' + ipCell + '</td>' +
         '<td>' + nameCell + '</td>' +
         '<td style="min-width:150px">' +
-          '<input class="comment-input" placeholder="Lägg till kommentar…"' +
+          '<input class="comment-input" placeholder="' + t.commentPh + '"' +
           ' value="' + comment + '" data-mac="' + mac + '" data-ip="' + d.ip + '"' +
           ' oninput="commentInput(this)" onblur="saveComment(this.dataset.mac, this.value)" />' +
         '</td>' +
@@ -518,7 +518,7 @@
     prog.innerHTML  = '';
     prog.classList.add('open');
     lastLines = 0;
-    setScanStatus('⟳ SCANNAR…', 'var(--accent3)');
+    setScanStatus(t.scanning, 'var(--accent3)');
 
     try {
       const url = apiUrl('api/scan/start') +
@@ -609,7 +609,7 @@
 
     btn.disabled = false;
     btn.textContent = t.fetchAll;
-    showToast(`✓ ${found} namn hittade av ${targets.length} enheter`);
+    showToast(t.fetchAllDone(found, targets.length));
   }
 
   // ── Persist device_name to server ────────────────────────────────────────
@@ -691,11 +691,11 @@
         await persistDeviceName(ip, name);
         if (!comments[mac]) await saveComment(mac, name);
         renderTable();
-        showToast(`✓ "${name}" hämtat och sparat`);
+        showToast(t.fetched(name));
       } else {
         btn.classList.remove('loading');
         btn.textContent = t.fetchBtn;
-        showToast(`⚠ Inget namn för ${ip}`);
+        showToast(t.noName(ip));
       }
     } catch {
       btn.classList.remove('loading');
