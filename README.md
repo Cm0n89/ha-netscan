@@ -32,15 +32,17 @@ offline_threshold: 5    # Scanningar offline innan röd indikering
 ```
 ## Krav
 - Home Assistant OS eller Supervised
+- nmap installeras automatiskt
+- 
+## Licens
+MIT — använd och modifiera fritt.
 
 ## BUYMEACOFFE
 buymeacoffee.com/cmon89
-<img width="700" height="700" alt="bmc_qr" src="https://github.com/user-attachments/assets/6b851840-d09e-4c8d-91f8-eea68fb54329" />
+<img width="100" height="100" alt="bmc_qr" src="https://github.com/user-attachments/assets/6b851840-d09e-4c8d-91f8-eea68fb54329" />
 
 
 
-- nmap installeras automatiskt
 
-## Licens
 
-MIT — använd och modifiera fritt.
+
