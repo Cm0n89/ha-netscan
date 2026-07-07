@@ -401,11 +401,10 @@
     setScanStatus('⟳ SCANNAR…', 'var(--accent3)');
 
     try {
-      const r = await fetch(apiUrl('api/scan/start'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ network: net, method: scanMethod }),
-      });
+      const url = apiUrl('api/scan/start') +
+                  '?network=' + encodeURIComponent(net) +
+                  '&method='  + encodeURIComponent(scanMethod);
+      const r   = await fetch(url, { cache: 'no-store' });
       const res = await r.json();
       if (!res.ok) throw new Error(res.error || 'Misslyckades');
     } catch (e) {

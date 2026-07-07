@@ -389,6 +389,7 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         if   p in ("", "/", "/index.html"):  self._serve_static("index.html")
         elif p == "/api/scan_results":        self._serve_results()
         elif p == "/api/scan/status":         self._serve_status()
+        elif p == "/api/scan/start":           self._serve_scan_start_get(path)
         elif p == "/api/scan/detect":         self._serve_detect()
         elif p == "/api/device_name":         self._serve_device_name(path)
         elif p == "/api/comments":            self._serve_comments()
@@ -508,6 +509,18 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
             self._json({"ok": True, "online": online})
         except Exception as e:
             self._json({"ok": False, "error": str(e)})
+
+    def _serve_scan_start_get(self, full_path):
+        """GET /api/scan/start?network=x&method=y — starts a scan."""
+        from urllib.parse import urlparse, parse_qs
+        qs      = parse_qs(urlparse(full_path).query)
+        network = qs.get("network", [""])[0].strip()
+        method  = qs.get("method",  ["auto"])[0].strip()
+        with _scan_lock:
+            if _scan_state["running"]:
+                self._json({"ok": False, "error": "Scan already running"}); return
+        start_scan(network, method)
+        self._json({"ok": True, "network": network or detect_network()})
 
     def _serve_detect(self):
         nmap = find_nmap()
