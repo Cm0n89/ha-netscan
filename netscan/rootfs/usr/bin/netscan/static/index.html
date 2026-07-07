@@ -342,31 +342,48 @@
     });
 
     tbody.innerHTML = list.map(d => {
-      const mac     = d.mac || '';
-      const online  = d._online !== false;
-      const comment = esc(comments[mac] || '');
-      const hasName = !!d.device_name;
-      const vendor  = d.vendor || '';
-      const isUnk   = !vendor || vendor === 'Unknown';
+      const mac      = d.mac || '';
+      const offCount = d.offline_count || 0;
+      const isOnline = offCount === 0;
+      const isWarn   = offCount > 0 && offCount < offlineThreshold;
+      const isCrit   = offCount >= offlineThreshold;
+      const comment  = esc(comments[mac] || '');
+      const hasName  = !!d.device_name;
+      const vendor   = d.vendor || '';
+      const isUnk    = !vendor || vendor === 'Unknown';
+      const dotCls   = isOnline ? 'on' : (isWarn ? 'warn' : 'off');
+      const rowCls   = [
+        !isOnline ? (isCrit ? 'offline-crit' : 'offline-warn') : '',
+        comment ? 'commented' : ''
+      ].filter(Boolean).join(' ');
+      const tip = isOnline ? 'Online' :
+                  isWarn   ? \`Offline \${offCount} scan(s)\` :
+                             \`Offline \${offCount} scanningar\`;
 
-      return `
-        <tr class="${!online ? 'offline' : ''} ${comment ? 'commented' : ''}">
-          <td class="td-status"><span class="dot ${online ? 'on' : 'off'}" title="${online ? 'Online' : 'Offline'}"></span></td>
-          <td class="td-ip">${isOnline
-            ? `<a class="ip-link" href="http://${d.ip}" target="_blank">${d.ip}</a>`
-            : `<span style="color:var(--dim)">${d.ip}</span>`}</td>
-          <td>${hasName
-            ? `<span class="name-badge">${esc(d.device_name)}</span>`
-            : `<button class="fetch-btn" data-ip="${d.ip}" data-mac="${mac}" onclick="fetchName(this)">⟳ Hämta</button>`}</td>
+      return \`
+        <tr class="\${rowCls}">
+          <td class="td-status">
+            <div class="action-btns">
+              <span class="dot \${dotCls}" title="\${tip}"></span>
+              \${!isOnline ? \`<button class="btn-rescan" data-ip="\${d.ip}" onclick="rescanDevice(this)">⟳</button>\` : ''}
+              \${isCrit    ? \`<button class="btn-remove" data-ip="\${d.ip}" onclick="removeDevice(this)">✕</button>\` : ''}
+            </div>
+          </td>
+          <td class="td-ip">\${isOnline
+            ? \`<a class="ip-link" href="http://\${d.ip}" target="_blank">\${d.ip}</a>\`
+            : \`<span style="color:var(--dim)">\${d.ip}</span>\`}</td>
+          <td>\${hasName
+            ? \`<span class="name-badge">\${esc(d.device_name)}</span>\`
+            : \`<button class="fetch-btn" data-ip="\${d.ip}" data-mac="\${mac}" onclick="fetchName(this)">⟳ Hämta</button>\`}</td>
           <td style="min-width:150px">
             <input class="comment-input" placeholder="Lägg till kommentar…"
-                   value="${comment}" data-mac="${mac}" data-ip="${d.ip}"
+                   value="\${comment}" data-mac="\${mac}" data-ip="\${d.ip}"
                    oninput="commentInput(this)" onblur="saveComment(this.dataset.mac, this.value)" />
           </td>
-          <td><span class="vendor-badge ${isUnk ? 'unknown' : ''}">${esc(vendor || 'Unknown')}</span></td>
-          <td class="td-host ${d.hostname ? '' : 'empty'}">${esc(d.hostname || '—')}</td>
-          <td class="td-mac">${esc(mac)}</td>
-        </tr>`;
+          <td><span class="vendor-badge \${isUnk ? 'unknown' : ''}">\${esc(vendor || 'Unknown')}</span></td>
+          <td class="td-host \${d.hostname ? '' : 'empty'}">\${esc(d.hostname || '—')}</td>
+          <td class="td-mac">\${esc(mac)}</td>
+        </tr>\`;
     }).join('');
   }
 
