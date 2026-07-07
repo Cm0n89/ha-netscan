@@ -1,4 +1,4 @@
-# NetScan — Home Assistant Add-on
+# NetScan — Home Assistant Add-on                                                      <img width="100" height="100" alt="bmc_qr" src="https://github.com/user-attachments/assets/6b851840-d09e-4c8d-91f8-eea68fb54329" />
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![HA Addon](https://img.shields.io/badge/Home%20Assistant-Add--on-blue?logo=homeassistant)](https://www.home-assistant.io/addons/)
@@ -38,7 +38,6 @@ offline_threshold: 5    # Scanningar offline innan röd indikering
 MIT — använd och modifiera fritt.
 
 ## BUYMEACOFFE
-buymeacoffee.com/cmon89
 <img width="100" height="100" alt="bmc_qr" src="https://github.com/user-attachments/assets/6b851840-d09e-4c8d-91f8-eea68fb54329" />
 
 
