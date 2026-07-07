@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NetScan">
+<meta name="theme-color" content="#080c0f">
+<title>NET::SCAN // Network Monitor</title>
+<style>
+  :root {
+    --bg:       #080c0f;
+    --bg2:      #0d1418;
+    --panel:    #0f1c24;
+    --border:   #1e3a4a;
+    --accent:   #00d4ff;
+    --accent2:  #00ff9d;
+    --accent3:  #ff6b35;
+    --warn:     #ffcc00;
+    --text:     #c8dde8;
+    --dim:      #5a7a8a;
+    --mono:     'Consolas', 'Courier New', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; }
+
+  /* Header */
+  .header { background: var(--panel); border-bottom: 2px solid var(--accent); padding: 12px 16px;
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .logo { font-family: var(--mono); font-size: 20px; color: var(--accent); font-weight: bold; }
+  .logo span { color: var(--dim); }
+  .hdr-meta { font-family: var(--mono); font-size: 11px; color: var(--dim); text-align: right; }
+  .live { color: var(--accent2); }
+
+  /* Toolbar */
+  .toolbar { background: var(--bg2); padding: 8px 12px; display: flex;
+             align-items: center; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .btn { font-family: var(--mono); font-size: 11px; padding: 6px 14px; border: 1px solid;
+         background: transparent; cursor: pointer; letter-spacing: 0.1em; transition: all 0.15s; white-space: nowrap; }
+  .btn-scan  { border-color: var(--accent2); color: var(--accent2); }
+  .btn-scan:hover:not(:disabled)  { background: var(--accent2); color: var(--bg); }
+  .btn-scan:disabled { opacity: 0.5; cursor: wait; }
+  .btn-fetch-all { border-color: var(--accent); color: var(--accent); }
+  .btn-fetch-all:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+  .btn-fetch-all:disabled { opacity: 0.5; cursor: wait; }
+  .label { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 0.15em; }
+  .seg-input { font-family: var(--mono); font-size: 12px; background: var(--bg);
+               border: 1px solid #2a5a72; color: var(--accent); padding: 5px 8px; outline: none; width: 160px; }
+  .seg-input:focus { border-color: var(--accent); }
+
+  /* Scan method toggle */
+  .method-btn { font-family: var(--mono); font-size: 10px; padding: 5px 10px;
+                border: 1px solid var(--border); background: transparent; color: var(--dim); cursor: pointer; }
+  .method-btn.active { background: rgba(0,255,157,0.1); border-color: var(--accent2); color: var(--accent2); }
+
+  /* Progress */
+  .progress { display: none; background: var(--bg); border-bottom: 1px solid var(--border);
+              padding: 6px 12px; max-height: 100px; overflow-y: auto; }
+  .progress.open { display: block; }
+  .prog-line { font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 1.8; }
+  .prog-line.ok  { color: var(--accent2); }
+  .prog-line.err { color: var(--accent3); }
+
+  /* Stats */
+  .stats { display: flex; background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .stat { flex: 1; padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--border); }
+  .stat:last-child { border-right: none; }
+  .dot-stat { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot-stat.green  { background: var(--accent2); box-shadow: 0 0 5px rgba(0,255,157,0.6); }
+  .dot-stat.orange { background: var(--accent3); }
+  .dot-stat.blue   { background: var(--accent); }
+  .stat-val { font-family: var(--mono); font-size: 16px; color: #eef6fa; }
+  .stat-lbl { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: 0.15em; display: block; }
+
+  /* Search */
+  .search-bar { background: var(--bg); padding: 6px 12px; border-bottom: 1px solid var(--border);
+                display: flex; align-items: center; gap: 8px; }
+  .search-input { flex: 1; font-family: var(--mono); font-size: 12px; background: var(--bg2);
+                  border: 1px solid var(--border); color: var(--text); padding: 6px 10px; outline: none; }
+  .search-input:focus { border-color: #2a5a72; }
+  .search-input::placeholder { color: var(--dim); }
+  .clear-btn { font-family: var(--mono); font-size: 12px; background: transparent; border: none;
+               color: var(--dim); cursor: pointer; padding: 4px 8px; }
+  .clear-btn:hover { color: var(--text); }
+
+  /* Table */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #111a20; border-bottom: 2px solid #2a5a72; }
+  th { font-family: var(--mono); font-size: 9px; letter-spacing: 0.2em; color: var(--dim);
+       text-transform: uppercase; padding: 10px 12px; text-align: left;
+       white-space: nowrap; cursor: pointer; user-select: none; }
+  th:hover { color: var(--accent); }
+  tbody tr { border-bottom: 1px solid rgba(30,58,74,0.5); transition: background 0.1s; }
+  tbody tr:hover { background: rgba(0,212,255,0.03); }
+  tbody tr.offline { opacity: 0.45; }
+  tbody tr.commented { background: rgba(0,255,157,0.03); }
+  td { padding: 9px 12px; vertical-align: middle; }
+
+  .td-status { width: 28px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.on      { background: var(--accent2); box-shadow: 0 0 5px rgba(0,255,157,0.6); }
+  .dot.warn    { background: var(--warn); box-shadow: 0 0 5px rgba(255,204,0,0.5); }
+  .dot.off     { background: var(--accent3); box-shadow: 0 0 5px rgba(255,107,53,0.5); }
+  .action-btns { display: flex; gap: 4px; align-items: center; }
+  .btn-rescan  { font-family: var(--mono); font-size: 9px; padding: 2px 6px;
+                  border: 1px solid var(--warn); background: transparent;
+                  color: var(--warn); cursor: pointer; white-space: nowrap; }
+  .btn-rescan:hover { background: var(--warn); color: var(--bg); }
+  .btn-remove  { font-family: var(--mono); font-size: 9px; padding: 2px 6px;
+                  border: 1px solid var(--accent3); background: transparent;
+                  color: var(--accent3); cursor: pointer; white-space: nowrap; }
+  .btn-remove:hover { background: var(--accent3); color: var(--bg); }
+  tbody tr.offline-warn { background: rgba(255,204,0,0.03); }
+  tbody tr.offline-crit { background: rgba(255,107,53,0.05); }
+
+  .td-ip { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .ip-link { color: var(--accent); text-decoration: none; border-bottom: 1px dashed rgba(0,212,255,0.3); }
+  .ip-link:hover { color: #fff; }
+
+  .name-badge { display: inline-block; padding: 2px 7px;
+                border: 1px solid rgba(0,255,157,0.3); background: rgba(0,255,157,0.05);
+                font-size: 12px; color: var(--accent2); font-weight: 600; }
+  .fetch-btn { font-family: var(--mono); font-size: 10px; padding: 2px 7px;
+               border: 1px dashed #2a5a72; background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  .fetch-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .fetch-btn.loading { opacity: 0.5; cursor: wait; }
+
+  .vendor-badge { font-family: var(--mono); font-size: 10px; padding: 2px 6px;
+                  border: 1px solid #2a5a72; color: var(--text); background: rgba(255,255,255,0.02); white-space: nowrap; }
+  .vendor-badge.unknown { border-color: var(--border); color: var(--dim); }
+
+  .td-mac  { font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: nowrap; }
+  .td-host { font-family: var(--mono); font-size: 11px; }
+  .td-host.empty { color: var(--dim); }
+
+  .comment-input { background: transparent; border: none; border-bottom: 1px solid transparent;
+                   color: var(--text); font-family: 'Segoe UI',sans-serif; font-size: 13px;
+                   padding: 2px; outline: none; width: 100%; min-width: 120px; transition: border-color 0.2s; }
+  .comment-input:hover { border-bottom-color: #2a5a72; }
+  .comment-input:focus { border-bottom-color: var(--accent2); }
+  .comment-input::placeholder { color: var(--dim); font-style: italic; opacity: 0.6; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel);
+           border: 1px solid var(--accent2); color: var(--accent2); font-family: var(--mono);
+           font-size: 12px; padding: 10px 16px; opacity: 0; transition: opacity 0.3s;
+           pointer-events: none; z-index: 999; }
+  .toast.show { opacity: 1; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #2a5a72; }
+
+  /* Mobile */
+  @media (max-width: 600px) {
+    th:nth-child(6), td:nth-child(6),
+    th:nth-child(7), td:nth-child(7) { display: none; }
+    .hdr-meta { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">NET<span>::</span>SCAN</div>
+  <div class="hdr-meta">
+    <div>SENASTE SCAN: <span id="lastScan" style="color:var(--text)">—</span></div>
+    <div>STATUS: <span id="scanStatus" class="live">● IDLE</span></div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button id="btnScan" class="btn btn-scan">⟳ SCANNA NU</button>
+  <button id="btnFetchAll" class="btn btn-fetch-all" title="Hämta enhetsnamn för alla enheter utan namn">⟳ HÄMTA ALLA NAMN</button>
+  <span class="label">SEGMENT</span>
+  <input id="segInput" class="seg-input" placeholder="192.168.1.0/24" />
+  <span class="label">METOD</span>
+  <div style="display:flex">
+    <button class="method-btn active" id="methodNmap" onclick="setMethod('nmap')">nmap</button>
+    <button class="method-btn" id="methodPython" onclick="setMethod('python')">python</button>
+  </div>
+  <span id="nmapStatus" style="font-family:var(--mono);font-size:10px;color:var(--dim)"></span>
+</div>
+
+<!-- Progress -->
+<div id="progress" class="progress"></div>
+
+<!-- Stats -->
+<div class="stats">
+  <div class="stat"><div class="dot-stat green"></div>
+    <div><div class="stat-val" id="statOnline">0</div><div class="stat-lbl">ONLINE</div></div></div>
+  <div class="stat"><div class="dot-stat orange"></div>
+    <div><div class="stat-val" id="statOffline">0</div><div class="stat-lbl">OFFLINE</div></div></div>
+  <div class="stat"><div class="dot-stat blue"></div>
+    <div><div class="stat-val" id="statTotal">0</div><div class="stat-lbl">TOTALT</div></div></div>
+</div>
+
+<!-- Search -->
+<div class="search-bar">
+  <span class="label">SÖK</span>
+  <input id="searchInput" class="search-input" placeholder="IP, namn, vendor, MAC, kommentar…" />
+  <button class="clear-btn" onclick="clearSearch()">✕</button>
+</div>
+
+<!-- Table -->
+<div class="tbl-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th onclick="sortBy('ip')">IP-ADRESS ↕</th>
+        <th onclick="sortBy('device_name')">ENHETSNAMN ↕</th>
+        <th>KOMMENTAR</th>
+        <th onclick="sortBy('vendor')">VENDOR ↕</th>
+        <th onclick="sortBy('hostname')">HOSTNAME ↕</th>
+        <th onclick="sortBy('mac')">MAC-ADRESS ↕</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let devices     = [];
+  let comments    = {};
+  let sortKey     = 'ip';
+  let sortRev     = false;
+  let search      = '';
+  let scanMethod        = 'nmap';
+  let offlineThreshold  = 5;
+  let lastMtime   = null;
+  let lastScanTime = null;
+  let commentTimers = {};
+  let scanPollTimer = null;
+  let lastLines   = 0;
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  document.getElementById('btnScan').addEventListener('click', triggerScan);
+  document.getElementById('btnFetchAll').addEventListener('click', fetchAllNames);
+  document.getElementById('searchInput').addEventListener('input', e => {
+    search = e.target.value.toLowerCase();
+    renderTable();
+  });
+
+  // Load local network
+  fetch(apiUrl('api/local_ip')).then(r => r.json()).then(d => {
+    if (d.network) document.getElementById('segInput').value = d.network;
+  }).catch(() => {});
+
+  // Detect nmap
+  fetch(apiUrl('api/scan/detect')).then(r => r.json()).then(d => {
+    const el = document.getElementById('nmapStatus');
+    if (d.available) {
+      el.textContent = '✓ nmap'; el.style.color = 'var(--accent2)';
+    } else {
+      el.textContent = '✗ nmap'; el.style.color = 'var(--accent3)';
+      setMethod('python');
+    }
+  }).catch(() => {});
+
+  // Start polling
+  poll();
+  setInterval(poll, 5000);
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+  async function poll() {
+    try {
+      const resp = await fetch(apiUrl('api/scan_results'), { cache: 'no-store' });
+      if (!resp.ok) return;
+      const lastMod = resp.headers.get('Last-Modified');
+      const mtime   = lastMod ? new Date(lastMod).getTime() : null;
+      let data;
+      try {
+        const text = await resp.text();
+        data = JSON.parse(text);
+      } catch(e) {
+        console.error('JSON parse error:', e);
+        return;
+      }
+      if (!data || !Array.isArray(data.devices)) return;
+
+      const changed = !mtime || !lastMtime || mtime > lastMtime || data.scan_time !== lastScanTime;
+      if (!changed) return;
+      lastMtime    = mtime || Date.now();
+      lastScanTime = data.scan_time;
+      devices      = data.devices;
+
+      if (data.scan_time) {
+        try {
+          document.getElementById('lastScan').textContent =
+            new Date(data.scan_time).toLocaleString('sv-SE');
+        } catch {}
+      }
+      if (data.offline_threshold) offlineThreshold = data.offline_threshold;
+
+      // Fetch comments
+      const cr = await fetch(apiUrl('api/comments'), { cache: 'no-store' });
+      if (cr.ok) comments = await cr.json();
+
+      renderTable();
+    } catch {}
+  }
+
+  // ── Table ──────────────────────────────────────────────────────────────────
+  function renderTable() {
+    const q = search;
+    let list = devices.filter(d => {
+      if (!q) return true;
+      return [d.ip, d.mac, d.vendor, d.hostname, d.device_name, comments[d.mac] || '']
+             .join(' ').toLowerCase().includes(q);
+    });
+
+    list = [...list].sort((a, b) => {
+      let av = sortKey === 'ip' ? ipInt(a.ip) : (a[sortKey] || '').toLowerCase();
+      let bv = sortKey === 'ip' ? ipInt(b.ip) : (b[sortKey] || '').toLowerCase();
+      if (av < bv) return sortRev ? 1 : -1;
+      if (av > bv) return sortRev ? -1 : 1;
+      return 0;
+    });
+
+    let online = 0, offline = 0;
+    devices.forEach(d => (d.offline_count || 0) === 0 ? online++ : offline++);
+    document.getElementById('statOnline').textContent  = online;
+    document.getElementById('statOffline').textContent = offline;
+    document.getElementById('statTotal').textContent   = devices.length;
+
+    const tbody = document.getElementById('tbody');
+
+    // Save unsaved comment values
+    tbody.querySelectorAll('.comment-input').forEach(inp => {
+      const mac = inp.dataset.mac;
+      if (mac && inp.value.trim()) comments[mac] = inp.value.trim();
+    });
+
+    tbody.innerHTML = list.map(d => {
+      const mac     = d.mac || '';
+      const online  = d._online !== false;
+      const comment = esc(comments[mac] || '');
+      const hasName = !!d.device_name;
+      const vendor  = d.vendor || '';
+      const isUnk   = !vendor || vendor === 'Unknown';
+
+      return `
+        <tr class="${!online ? 'offline' : ''} ${comment ? 'commented' : ''}">
+          <td class="td-status"><span class="dot ${online ? 'on' : 'off'}" title="${online ? 'Online' : 'Offline'}"></span></td>
+          <td class="td-ip">${isOnline
+            ? `<a class="ip-link" href="http://${d.ip}" target="_blank">${d.ip}</a>`
+            : `<span style="color:var(--dim)">${d.ip}</span>`}</td>
+          <td>${hasName
+            ? `<span class="name-badge">${esc(d.device_name)}</span>`
+            : `<button class="fetch-btn" data-ip="${d.ip}" data-mac="${mac}" onclick="fetchName(this)">⟳ Hämta</button>`}</td>
+          <td style="min-width:150px">
+            <input class="comment-input" placeholder="Lägg till kommentar…"
+                   value="${comment}" data-mac="${mac}" data-ip="${d.ip}"
+                   oninput="commentInput(this)" onblur="saveComment(this.dataset.mac, this.value)" />
+          </td>
+          <td><span class="vendor-badge ${isUnk ? 'unknown' : ''}">${esc(vendor || 'Unknown')}</span></td>
+          <td class="td-host ${d.hostname ? '' : 'empty'}">${esc(d.hostname || '—')}</td>
+          <td class="td-mac">${esc(mac)}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ── Scan ───────────────────────────────────────────────────────────────────
+  async function triggerScan() {
+    const btn  = document.getElementById('btnScan');
+    const prog = document.getElementById('progress');
+    const net  = document.getElementById('segInput').value.trim();
+
+    btn.disabled = true;
+    btn.textContent = '⟳ SCANNAR…';
+    prog.innerHTML  = '';
+    prog.classList.add('open');
+    lastLines = 0;
+    setScanStatus('⟳ SCANNAR…', 'var(--accent3)');
+
+    try {
+      const r = await fetch(apiUrl('api/scan/start'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ network: net, method: scanMethod }),
+      });
+      const res = await r.json();
+      if (!res.ok) throw new Error(res.error || 'Misslyckades');
+    } catch (e) {
+      appendLog(prog, `FEL: ${e.message}`, 'err');
+      scanDone(btn, prog, false); return;
+    }
+
+    scanPollTimer = setInterval(async () => {
+      try {
+        const sr = await fetch(apiUrl('api/scan/status'), { cache: 'no-store' });
+        const s  = await sr.json();
+        const lines = s.progress || [];
+        for (let i = lastLines; i < lines.length; i++) {
+          const l = lines[i];
+          appendLog(prog, l, l.startsWith('[OK]') || l.startsWith('[+]') ? 'ok' :
+                            l.startsWith('[!]') ? 'err' : '');
+        }
+        lastLines = lines.length;
+        if (!s.running) {
+          clearInterval(scanPollTimer);
+          lastMtime = null; lastScanTime = null;
+          await poll();
+          scanDone(btn, prog, true);
+        }
+      } catch { clearInterval(scanPollTimer); scanDone(btn, prog, false); }
+    }, 1500);
+  }
+
+  function scanDone(btn, prog, ok) {
+    btn.disabled = false;
+    btn.textContent = '⟳ SCANNA NU';
+    setScanStatus(ok ? '● KLAR' : '● FEL', ok ? 'var(--accent2)' : 'var(--accent3)');
+    setTimeout(() => setScanStatus('● IDLE', 'var(--accent2)'), 4000);
+    showToast(ok ? '✓ Scan klar' : '⚠ Scan misslyckades');
+  }
+
+  function setScanStatus(text, color) {
+    const el = document.getElementById('scanStatus');
+    el.textContent = text; el.style.color = color || '';
+  }
+
+  function appendLog(container, text, cls) {
+    const d = document.createElement('div');
+    d.className = 'prog-line' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    container.appendChild(d);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // ── Fetch all names ───────────────────────────────────────────────────────
+  async function fetchAllNames() {
+    const targets = devices.filter(d => !d.device_name);
+    if (!targets.length) {
+      showToast('Alla enheter har redan ett namn'); return;
+    }
+
+    const btn = document.getElementById('btnFetchAll');
+    btn.disabled = true;
+    btn.textContent = `⟳ 0/${targets.length}`;
+
+    let done = 0, found = 0;
+    for (const d of targets) {
+      try {
+        const r    = await fetch(apiUrl(`api/device_name?ip=${encodeURIComponent(d.ip)}`));
+        const data = await r.json();
+        const name = data.name || '';
+        if (name) {
+          d.device_name = name;
+          // Persist device_name to disk
+          await persistDeviceName(d.ip, name);
+          if (!comments[d.mac]) {
+            comments[d.mac] = name;
+            // Save via comment input blur trigger after render
+          }
+          found++;
+        }
+      } catch {}
+      done++;
+      btn.textContent = `⟳ ${done}/${targets.length}`;
+      renderTable();
+    }
+
+    btn.disabled = false;
+    btn.textContent = '⟳ HÄMTA ALLA NAMN';
+    showToast(`✓ ${found} namn hittade av ${targets.length} enheter`);
+  }
+
+  // ── Persist device_name to server ────────────────────────────────────────
+  // Build URL relative to current page location (works under HA ingress)
+  function apiUrl(path) {
+    // Remove trailing slash and any filename from current path
+    let base = window.location.pathname;
+    // If path ends with a file (has extension), remove the filename part
+    if (base.match(/\.[a-z]+$/i)) {
+      base = base.substring(0, base.lastIndexOf('/'));
+    }
+    // Remove trailing slash
+    base = base.replace(/\/+$/, '');
+    const url = base + '/' + path;
+    return url;
+  }
+
+  async function apiFetch(path, options) {
+    return fetch(apiUrl(path), options);
+  }
+
+  async function persistDeviceName(ip, name) {
+    try {
+      const url = apiUrl('api/update_device') +
+                  '?ip=' + encodeURIComponent(ip) +
+                  '&device_name=' + encodeURIComponent(name);
+      await fetch(url, { cache: 'no-store' });
+    } catch {}
+  }
+
+  // ── Rescan / Remove device ────────────────────────────────────────────────
+  async function rescanDevice(btn) {
+    const ip = btn.dataset.ip;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try {
+      const r    = await fetch(apiUrl('api/rescan_device') + '?ip=' + encodeURIComponent(ip));
+      const data = await r.json();
+      if (data.online) {
+        showToast(`✓ ${ip} är online igen!`);
+        lastMtime = null; lastScanTime = null;
+        await poll();
+      } else {
+        showToast(`${ip} svarar fortfarande inte`);
+        btn.textContent = '⟳';
+        btn.disabled = false;
+      }
+    } catch {
+      btn.textContent = '⟳';
+      btn.disabled = false;
+    }
+  }
+
+  async function removeDevice(btn) {
+    const ip = btn.dataset.ip;
+    if (!confirm(`Ta bort ${ip} från listan?`)) return;
+    try {
+      await fetch(apiUrl('api/remove_device') + '?ip=' + encodeURIComponent(ip));
+      devices = devices.filter(d => d.ip !== ip);
+      renderTable();
+      showToast(`✓ ${ip} borttagen`);
+    } catch {}
+  }
+
+  // ── Device name ────────────────────────────────────────────────────────────
+  async function fetchName(btn) {
+    const ip  = btn.dataset.ip;
+    const mac = btn.dataset.mac;
+    btn.classList.add('loading');
+    btn.textContent = '⟳ hämtar…';
+    try {
+      const r    = await fetch(apiUrl(`api/device_name?ip=${encodeURIComponent(ip)}`));
+      const data = await r.json();
+      const name = data.name || '';
+      if (name) {
+        const dev = devices.find(d => d.ip === ip);
+        if (dev) dev.device_name = name;
+        // Persist to disk
+        await persistDeviceName(ip, name);
+        if (!comments[mac]) await saveComment(mac, name);
+        renderTable();
+        showToast(`✓ "${name}" hämtat och sparat`);
+      } else {
+        btn.classList.remove('loading');
+        btn.textContent = '⟳ Hämta';
+        showToast(`⚠ Inget namn för ${ip}`);
+      }
+    } catch {
+      btn.classList.remove('loading');
+      btn.textContent = '⟳ Hämta';
+    }
+  }
+
+  // ── Comments ───────────────────────────────────────────────────────────────
+  function commentInput(inp) {
+    const mac = inp.dataset.mac;
+    clearTimeout(commentTimers[mac]);
+    commentTimers[mac] = setTimeout(() => saveComment(mac, inp.value), 800);
+  }
+
+  async function saveComment(mac, value) {
+    if (!mac) return;
+    const v = (value || '').trim();
+    if (v) comments[mac] = v;
+    else   delete comments[mac];
+    // HA ingress strips POST body — send each comment as GET query param
+    try {
+      const url = apiUrl('api/save_comment') +
+                  '?mac=' + encodeURIComponent(mac) +
+                  '&comment=' + encodeURIComponent(v);
+      await fetch(url, { cache: 'no-store' });
+    } catch {}
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function sortBy(key) {
+    if (sortKey === key) sortRev = !sortRev;
+    else { sortKey = key; sortRev = false; }
+    renderTable();
+  }
+
+  function setMethod(m) {
+    scanMethod = m;
+    document.getElementById('methodNmap').classList.toggle('active', m === 'nmap');
+    document.getElementById('methodPython').classList.toggle('active', m === 'python');
+  }
+
+  function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    search = ''; renderTable();
+  }
+
+  function ipInt(ip) {
+    try { return ip.split('.').reduce((a, o) => a * 256 + parseInt(o), 0); }
+    catch { return 0; }
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+</script>
+</body>
+</html>

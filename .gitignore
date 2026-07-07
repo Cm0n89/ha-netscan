@@ -1,0 +1,8 @@
+*.pyc
+__pycache__/
+.DS_Store
+*.tmp
+scan_results.json
+comments.json
+nmap_scan.xml
+history.json

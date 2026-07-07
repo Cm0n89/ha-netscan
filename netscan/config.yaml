@@ -1,0 +1,32 @@
+name: "NetScan Network Monitor"
+description: "Nätverksskanner med webbgränssnitt inbyggt i Home Assistant."
+version: "1.0.3"
+slug: "netscan"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+startup: "application"
+boot: "auto"
+host_network: true
+privileged:
+  - NET_ADMIN
+  - NET_RAW
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: "mdi:lan-check"
+panel_title: "NetScan"
+panel_admin: false
+options:
+  scan_interval: 5
+  network: ""
+  scan_method: "nmap"
+  offline_threshold: 5
+schema:
+  scan_interval: int
+  network: str
+  scan_method: "list(nmap|python|auto)"
+  offline_threshold: int
