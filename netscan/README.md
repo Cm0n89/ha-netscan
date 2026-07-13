@@ -1,43 +1,32 @@
-# NetScan — Home Assistant Add-on
+# NetScan Network Monitor
 
-Nätverksskanner som körs direkt i Home Assistant.
-Visar alla enheter på nätverket med IP, MAC, vendor, hostname och enhetsnamn.
+Network scanner built directly into Home Assistant.
+Displays all devices on your network with IP, MAC, vendor, hostname and device name.
 
-## Installation
+## Installation via GitHub (recommended)
 
-### Alternativ 1: Lokal add-on (rekommenderas)
+1. Go to **Settings → Add-ons → Add-on Store**
+2. Click ⋮ → **Repositories**
+3. Add: `https://github.com/Cm0n89/ha-netscan`
+4. Search for **NetScan** and install
 
-1. Kopiera mappen `netscan/` till `/addon_configs/` eller `/addons/` på din HA-instans
-2. Gå till **Inställningar → Add-ons → Add-on store → ⋮ → Check for updates**
-3. Du ska nu se "NetScan Network Monitor" under Lokala add-ons
-4. Installera och starta
+## Configuration
 
-### Alternativ 2: Via Samba
-Kopiera `netscan/`-mappen till `\\<ha-ip>\addons\` via Samba.
-
-## Konfiguration
-
-| Alternativ | Standard | Beskrivning |
+| Option | Default | Description |
 |---|---|---|
-| `scan_interval` | 5 | Minuter mellan auto-scans |
-| `network` | auto | T.ex. `192.168.68.0/22` (tomt = auto) |
-| `scan_method` | nmap | `nmap`, `python` eller `auto` |
+| `scan_interval` | 5 | Minutes between auto-scans |
+| `network` | auto | E.g. `192.168.68.0/22` (empty = auto-detect) |
+| `scan_method` | nmap | `nmap`, `python` or `auto` |
+| `offline_threshold` | 5 | Scans offline before red indicator |
 
-## Åtkomst
+## Requirements
 
-Add-on:et körs på port **8080**.
-Öppna: `http://<ha-ip>:8080`
+- Home Assistant OS or Supervised
+- nmap is installed automatically inside the Docker container
+- `host_network: true` is required to see the full network — configured automatically
 
-Eller klicka på **Öppna webbgränssnitt** i add-on-panelen.
+## Troubleshooting
 
-## Krav
-
-- Home Assistant OS eller Supervised (kör på Proxmox = OK)
-- nmap installeras automatiskt i Docker-containern
-- `host_network: true` används för att kunna se hela nätverket
-
-## Felsökning
-
-- **Ser inga enheter**: Kontrollera att `network` är korrekt inställt
-- **nmap hittar inte enheter**: Prova att byta till `scan_method: python`
-- **Loggar**: Inställningar → Add-ons → NetScan → Loggar
+- **No devices shown**: Check that `network` is set correctly
+- **nmap not finding devices**: Try switching to `scan_method: python`
+- **Logs**: Settings → Add-ons → NetScan → Logs
