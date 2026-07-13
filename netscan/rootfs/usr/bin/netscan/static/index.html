@@ -226,7 +226,13 @@
         <th onclick="sortBy('mac')">MAC-ADRESS ↕</th>
       </tr>
     </thead>
-    <tbody id="tbody"></tbody>
+    <tbody id="tbody">
+      <tr id="loadingMsg">
+        <td colspan="7" style="text-align:center;padding:40px;font-family:monospace;color:var(--dim);letter-spacing:0.1em">
+          ⟳ Loading…
+        </td>
+      </tr>
+    </tbody>
   </table>
 </div>
 
@@ -385,8 +391,9 @@
   // Apply saved language
   setLang(lang);
 
-  // Start polling
+  // Load data immediately on page open
   poll();
+  // Then keep polling every 5 seconds for updates
   setInterval(poll, 5000);
 
   // ── Polling ────────────────────────────────────────────────────────────────
@@ -406,8 +413,12 @@
       }
       if (!data || !Array.isArray(data.devices)) return;
 
-      const changed = !mtime || !lastMtime || mtime > lastMtime || data.scan_time !== lastScanTime;
+      // Always load on first poll, then only when data has changed
+      const firstLoad = lastScanTime === null;
+      const changed   = firstLoad || !mtime || !lastMtime ||
+                        mtime > lastMtime || data.scan_time !== lastScanTime;
       if (!changed) return;
+
       lastMtime    = mtime || Date.now();
       lastScanTime = data.scan_time;
       devices      = data.devices;
@@ -421,10 +432,21 @@
       if (data.offline_threshold) offlineThreshold = data.offline_threshold;
 
       // Fetch comments
-      const cr = await fetch(apiUrl('api/comments'), { cache: 'no-store' });
-      if (cr.ok) comments = await cr.json();
+      try {
+        const cr = await fetch(apiUrl('api/comments'), { cache: 'no-store' });
+        if (cr.ok) {
+          const ct = await cr.text();
+          comments = ct ? JSON.parse(ct) : {};
+        }
+      } catch {}
 
       renderTable();
+
+      // Hide loading indicator on first successful load
+      if (firstLoad) {
+        const loadingEl = document.getElementById('loadingMsg');
+        if (loadingEl) loadingEl.style.display = 'none';
+      }
     } catch {}
   }
 
