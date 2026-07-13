@@ -676,18 +676,10 @@
 
   // ── Persist device_name to server ────────────────────────────────────────
   // Build URL relative to current page location (works under HA ingress)
-  // Base URL derived once at startup from the actual page location
-  const _BASE = (() => {
-    let b = window.location.href;
-    // Remove query string and fragment
-    b = b.split('?')[0].split('#')[0];
-    // Remove any filename (index.html etc)
-    if (!b.endsWith('/')) b = b.substring(0, b.lastIndexOf('/') + 1);
-    return b;
-  })();
-
   function apiUrl(path) {
-    return _BASE + path;
+    let b = window.location.href.split('?')[0].split('#')[0];
+    if (!b.endsWith('/')) b = b.substring(0, b.lastIndexOf('/') + 1);
+    return b + path;
   }
 
   async function apiFetch(path, options) {
