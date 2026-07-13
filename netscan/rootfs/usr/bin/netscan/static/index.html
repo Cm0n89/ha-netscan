@@ -229,7 +229,10 @@
     <tbody id="tbody">
       <tr id="loadingMsg">
         <td colspan="7" style="text-align:center;padding:40px;font-family:monospace;color:var(--dim);letter-spacing:0.1em">
-          ⟳ Loading…
+          <div>⟳ Loading…</div>
+          <button id="loadDataBtn" onclick="poll()" style="display:none;margin-top:16px;font-family:monospace;font-size:12px;padding:8px 20px;border:1px solid #00d4ff;background:transparent;color:#00d4ff;cursor:pointer;letter-spacing:0.1em">
+            ⟳ LOAD DATA
+          </button>
         </td>
       </tr>
     </tbody>
@@ -393,6 +396,13 @@
 
   // Load data immediately on page open
   poll();
+  // Show manual load button if still empty after 3 seconds
+  setTimeout(() => {
+    if (devices.length === 0) {
+      const btn = document.getElementById('loadDataBtn');
+      if (btn) btn.style.display = 'inline-block';
+    }
+  }, 3000);
   // Then keep polling every 5 seconds for updates
   setInterval(poll, 5000);
   // Check for new version every 30 seconds — auto-reload if updated
@@ -653,16 +663,17 @@
   // ── Persist device_name to server ────────────────────────────────────────
   // Build URL relative to current page location (works under HA ingress)
   function apiUrl(path) {
-    // Remove trailing slash and any filename from current path
+    // Build URL relative to the ingress base path
+    // HA ingress: window.location = /api/hassio_ingress/TOKEN/
+    // We want:                       /api/hassio_ingress/TOKEN/api/scan_results
     let base = window.location.pathname;
-    // If path ends with a file (has extension), remove the filename part
+    // Remove any file at end (e.g. index.html)
     if (base.match(/\.[a-z]+$/i)) {
       base = base.substring(0, base.lastIndexOf('/'));
     }
-    // Remove trailing slash
-    base = base.replace(/\/+$/, '');
-    const url = base + '/' + path;
-    return url;
+    // Ensure trailing slash
+    if (!base.endsWith('/')) base += '/';
+    return base + path;
   }
 
   async function apiFetch(path, options) {

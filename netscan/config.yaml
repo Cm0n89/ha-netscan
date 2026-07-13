@@ -1,6 +1,6 @@
 name: "NetScan Network Monitor"
 description: "Nätverksskanner med webbgränssnitt inbyggt i Home Assistant."
-version: "1.0.12"
+version: "1.0.13"
 slug: "netscan"
 init: false
 arch:
