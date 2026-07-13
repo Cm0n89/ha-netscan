@@ -394,8 +394,8 @@
   // Apply saved language
   setLang(lang);
 
-  // Load existing data immediately on page open
-  loadData();
+  // Small delay to ensure HA ingress iframe is fully ready
+  setTimeout(loadData, 500);
   // Show manual reload button if still empty after 4 seconds
   setTimeout(() => {
     if (devices.length === 0) {
@@ -424,38 +424,53 @@
   }
 
     async function loadData() {
-    // Simple direct load — no mtime checks, always renders
+    console.log('[NetScan] loadData called, url:', apiUrl('api/scan_results'));
     try {
-      const [scanResp, commentResp] = await Promise.all([
-        fetch(apiUrl('api/scan_results'), { cache: 'no-store' }),
-        fetch(apiUrl('api/comments'),     { cache: 'no-store' }),
-      ]);
-
-      if (scanResp.ok) {
-        const data = await scanResp.json();
-        if (data && Array.isArray(data.devices)) {
-          devices      = data.devices;
-          lastScanTime = data.scan_time || null;
-          if (data.offline_threshold) offlineThreshold = data.offline_threshold;
-          if (data.scan_time) {
-            document.getElementById('lastScan').textContent =
-              new Date(data.scan_time).toLocaleString('sv-SE');
-          }
-        }
+      // Fetch scan results
+      const scanResp = await fetch(apiUrl('api/scan_results'), {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      console.log('[NetScan] scan_results status:', scanResp.status, scanResp.url);
+      if (!scanResp.ok) {
+        console.error('[NetScan] scan_results failed:', scanResp.status);
+        return;
       }
-
-      if (commentResp.ok) {
-        const ct = await commentResp.text();
-        try { comments = ct ? JSON.parse(ct) : {}; } catch {}
+      const text = await scanResp.text();
+      console.log('[NetScan] scan_results body length:', text.length, 'preview:', text.substring(0, 80));
+      let data;
+      try { data = JSON.parse(text); } catch(e) {
+        console.error('[NetScan] JSON parse failed:', e, 'body:', text.substring(0, 200));
+        return;
       }
+      if (!data || !Array.isArray(data.devices)) {
+        console.error('[NetScan] no devices array:', data);
+        return;
+      }
+      devices      = data.devices;
+      lastScanTime = data.scan_time || null;
+      if (data.offline_threshold) offlineThreshold = data.offline_threshold;
+      if (data.scan_time) {
+        document.getElementById('lastScan').textContent =
+          new Date(data.scan_time).toLocaleString('sv-SE');
+      }
+      console.log('[NetScan] loaded', devices.length, 'devices');
 
-      // Hide loading message
+      // Fetch comments
+      try {
+        const cr = await fetch(apiUrl('api/comments'), {
+          cache: 'no-store', credentials: 'same-origin'
+        });
+        if (cr.ok) { const ct = await cr.text(); comments = ct ? JSON.parse(ct) : {}; }
+      } catch(e) { console.warn('[NetScan] comments fetch failed:', e); }
+
+      // Hide loading message and render
       const loadingEl = document.getElementById('loadingMsg');
       if (loadingEl) loadingEl.style.display = 'none';
-
       renderTable();
+      console.log('[NetScan] renderTable done');
     } catch(e) {
-      console.error('loadData failed:', e);
+      console.error('[NetScan] loadData exception:', e);
     }
   }
 
