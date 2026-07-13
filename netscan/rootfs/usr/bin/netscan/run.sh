@@ -32,6 +32,7 @@ export NETSCAN_METHOD="${SCAN_METHOD}"
 export NETSCAN_DATA_DIR="${DATA_DIR}"
 export NETSCAN_PORT="${INGRESS_PORT}"
 export NETSCAN_OFFLINE_THRESHOLD="${OFFLINE_THRESHOLD}"
+export NETSCAN_VERSION="$(bashio::addon.version)"
 
 bashio::log.info "Starting Python server..."
 exec python3 /usr/bin/netscan/server.py

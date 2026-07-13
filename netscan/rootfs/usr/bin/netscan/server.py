@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 # ── Config ────────────────────────────────────────────────────────────────────
 PORT         = int(os.environ.get("NETSCAN_PORT", "8099"))
 DATA_DIR           = os.environ.get("NETSCAN_DATA_DIR", "/data")
+APP_VERSION        = os.environ.get("NETSCAN_VERSION", "1.0.11")
 SCAN_INTERVAL      = int(os.environ.get("NETSCAN_SCAN_INTERVAL", "5"))
 DEFAULT_NET        = os.environ.get("NETSCAN_NETWORK", "")
 SCAN_METHOD        = os.environ.get("NETSCAN_METHOD", "auto")
@@ -394,6 +395,7 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         elif p == "/api/device_name":         self._serve_device_name(path)
         elif p == "/api/comments":            self._serve_comments()
         elif p == "/api/local_ip":            self._serve_local_ip()
+        elif p == "/api/version":             self._serve_version()
         elif p == "/api/update_device":       self._serve_update_device_get(path)
         elif p == "/api/save_comment":         self._serve_save_comment_get(path)
         elif p == "/api/remove_device":        self._serve_remove_device(path)
@@ -522,6 +524,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         start_scan(network, method)
         self._json({"ok": True, "network": network or detect_network()})
 
+    def _serve_version(self):
+        self._json({"version": APP_VERSION})
+
     def _serve_detect(self):
         nmap = find_nmap()
         self._json({"available": nmap is not None, "path": nmap or ""})
@@ -567,13 +572,19 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
                 ".css": "text/css", ".json": "application/json",
                 ".svg": "image/svg+xml"}.get(ext, "application/octet-stream")
         with open(path, "rb") as f: data = f.read()
+        # Inject version into HTML for cache busting
+        if ext == ".html":
+            data = data.replace(
+                b'<meta name="theme-color"',
+                f'<meta name="app-version" content="{APP_VERSION}">\n<meta name="theme-color"'.encode()
+            )
         self.send_response(200); self._cors()
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
-        # Prevent browser caching of HTML so updates take effect immediately
         if ext == ".html":
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
             self.send_header("Pragma", "no-cache")
+            self.send_header("X-App-Version", APP_VERSION)
         self.end_headers(); self.wfile.write(data)
 
     # ── POST handlers ─────────────────────────────────────────────────────────

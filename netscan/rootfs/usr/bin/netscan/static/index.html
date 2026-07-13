@@ -395,8 +395,24 @@
   poll();
   // Then keep polling every 5 seconds for updates
   setInterval(poll, 5000);
+  // Check for new version every 30 seconds — auto-reload if updated
+  setInterval(checkVersion, 30000);
 
   // ── Polling ────────────────────────────────────────────────────────────────
+  async function checkVersion() {
+    try {
+      const resp = await fetch(apiUrl('api/version'), { cache: 'no-store' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const serverVersion = data.version || '';
+      const clientVersion = document.querySelector('meta[name="app-version"]')?.content || '';
+      if (serverVersion && clientVersion && serverVersion !== clientVersion) {
+        console.log('New version detected:', serverVersion, '- reloading');
+        window.location.reload(true);
+      }
+    } catch {}
+  }
+
   async function poll() {
     try {
       const resp = await fetch(apiUrl('api/scan_results'), { cache: 'no-store' });
