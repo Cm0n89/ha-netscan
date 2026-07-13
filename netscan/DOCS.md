@@ -1,44 +1,47 @@
 # NetScan Network Monitor
 
-Nätverksskanner som körs direkt i Home Assistant och visar alla enheter på ditt lokala nätverk med IP-adress, MAC-adress, vendor, hostname och enhetsnamn.
+Network scanner built directly into Home Assistant. Displays all devices on your local network with IP address, MAC address, vendor, hostname and device name.
 
-## Funktioner
+## Usage
 
-- **Automatisk scanning** via nmap eller inbyggd Python-scanner
-- **Enhetsnamn** — hämta namn automatiskt från Shelly, Sonos, ESPHome och andra enheter
-- **Kommentarer** — lägg till egna kommentarer per enhet (MAC-kopplat, överlever ny scanning)
-- **Offline-spårning** — enheter som försvinner visas i gult och rött beroende på hur länge de varit offline
-- **Inbyggt i HA** via Ingress — ingen extra port behövs
-- **Mobilvänligt** gränssnitt
+1. Start the add-on
+2. Click **NetScan** in the sidebar
+3. Click **⟳ SCAN NOW** to start a manual scan
+4. Click **⟳ FETCH ALL NAMES** to automatically fetch device names for all devices
 
-## Konfiguration
+## Configuration
 
-| Alternativ | Standard | Beskrivning |
+| Option | Default | Description |
 |---|---|---|
-| `scan_interval` | 5 | Minuter mellan automatiska scanningar |
-| `network` | auto | Nätverkssegment, t.ex. `192.168.68.0/22`. Lämna tomt för auto-detect. |
-| `scan_method` | nmap | `nmap` (snabbast), `python` eller `auto` |
-| `offline_threshold` | 5 | Antal scanningar offline innan röd indikering |
+| `scan_interval` | 5 | Minutes between automatic scans |
+| `network` | auto | Network segment, e.g. `192.168.68.0/22`. Leave empty for auto-detect. |
+| `scan_method` | nmap | `nmap` (fastest), `python` or `auto` |
+| `offline_threshold` | 5 | Number of scans offline before red indicator |
 
-## Användning
+## Features
 
-1. Starta add-on:et
-2. Klicka på **NetScan** i sidopanelen
-3. Klicka **⟳ SCANNA NU** för att starta en manuell scanning
-4. Klicka **⟳ HÄMTA ALLA NAMN** för att hämta enhetsnamn för alla enheter
+- **Automatic scanning** via nmap or built-in Python scanner
+- **Device names** — auto-fetched from Shelly, Sonos, ESPHome, UPnP, Philips Hue and more
+- **Comments** — add your own comments per device (linked to MAC address, survives rescans)
+- **Offline tracking** — devices that disappear are shown in yellow and red depending on how long they have been offline
+- **Built into HA** via Ingress — no extra port needed
+- **English / Swedish** language toggle in the UI
+- **Mobile-friendly** interface
 
-## Offline-indikering
+## Offline indicators
 
-- 🟢 **Grön** — enheten svarade i senaste scanning
-- 🟡 **Gul** — offline 1–(threshold-1) scanningar
-- 🔴 **Röd** — offline ≥ threshold scanningar
+| Indicator | Meaning |
+|---|---|
+| 🟢 Green | Device responded in the latest scan |
+| 🟡 Yellow | Offline for 1–(threshold−1) scans |
+| 🔴 Red | Offline for ≥ threshold scans |
 
-Vid offline visas knappar för att:
-- **⟳** skanna om just den enheten
-- **✕** ta bort enheten från listan (visas vid röd)
+When a device goes offline, action buttons appear:
+- **⟳** — ping the device immediately and restore status if it responds
+- **✕** — remove the device from the list (shown when red)
 
-## Krav
+## Requirements
 
-- Home Assistant OS eller Supervised
-- nmap installeras automatiskt inuti Docker-containern
-- `host_network: true` krävs för att kunna se hela nätverket
+- Home Assistant OS or Supervised
+- nmap is installed automatically inside the Docker container
+- `host_network: true` is required to see the full network — configured automatically

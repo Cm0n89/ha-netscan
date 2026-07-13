@@ -1,5 +1,5 @@
 name: "NetScan Network Monitor"
-description: "Nätverksskanner med webbgränssnitt inbyggt i Home Assistant."
+description: "Network scanner built into Home Assistant. Displays all devices on your local network with IP, MAC, vendor, hostname and device name."
 version: "1.0.18"
 slug: "netscan"
 init: false
