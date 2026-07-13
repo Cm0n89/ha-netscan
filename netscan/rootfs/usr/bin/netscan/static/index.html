@@ -230,7 +230,7 @@
       <tr id="loadingMsg">
         <td colspan="7" style="text-align:center;padding:40px;font-family:monospace;color:var(--dim);letter-spacing:0.1em">
           <div>⟳ Loading…</div>
-          <button id="loadDataBtn" onclick="poll()" style="display:none;margin-top:16px;font-family:monospace;font-size:12px;padding:8px 20px;border:1px solid #00d4ff;background:transparent;color:#00d4ff;cursor:pointer;letter-spacing:0.1em">
+          <button id="loadDataBtn" onclick="loadData()" style="display:none;margin-top:16px;font-family:monospace;font-size:12px;padding:8px 20px;border:1px solid #00d4ff;background:transparent;color:#00d4ff;cursor:pointer;letter-spacing:0.1em">
             ⟳ LOAD DATA
           </button>
         </td>
@@ -394,15 +394,15 @@
   // Apply saved language
   setLang(lang);
 
-  // Load data immediately on page open
-  poll();
-  // Show manual load button if still empty after 3 seconds
+  // Load existing data immediately on page open
+  loadData();
+  // Show manual reload button if still empty after 4 seconds
   setTimeout(() => {
     if (devices.length === 0) {
       const btn = document.getElementById('loadDataBtn');
       if (btn) btn.style.display = 'inline-block';
     }
-  }, 3000);
+  }, 4000);
   // Then keep polling every 5 seconds for updates
   setInterval(poll, 5000);
   // Check for new version every 30 seconds — auto-reload if updated
@@ -423,56 +423,70 @@
     } catch {}
   }
 
+    async function loadData() {
+    // Simple direct load — no mtime checks, always renders
+    try {
+      const [scanResp, commentResp] = await Promise.all([
+        fetch(apiUrl('api/scan_results'), { cache: 'no-store' }),
+        fetch(apiUrl('api/comments'),     { cache: 'no-store' }),
+      ]);
+
+      if (scanResp.ok) {
+        const data = await scanResp.json();
+        if (data && Array.isArray(data.devices)) {
+          devices      = data.devices;
+          lastScanTime = data.scan_time || null;
+          if (data.offline_threshold) offlineThreshold = data.offline_threshold;
+          if (data.scan_time) {
+            document.getElementById('lastScan').textContent =
+              new Date(data.scan_time).toLocaleString('sv-SE');
+          }
+        }
+      }
+
+      if (commentResp.ok) {
+        const ct = await commentResp.text();
+        try { comments = ct ? JSON.parse(ct) : {}; } catch {}
+      }
+
+      // Hide loading message
+      const loadingEl = document.getElementById('loadingMsg');
+      if (loadingEl) loadingEl.style.display = 'none';
+
+      renderTable();
+    } catch(e) {
+      console.error('loadData failed:', e);
+    }
+  }
+
   async function poll() {
     try {
       const resp = await fetch(apiUrl('api/scan_results'), { cache: 'no-store' });
       if (!resp.ok) return;
       const lastMod = resp.headers.get('Last-Modified');
       const mtime   = lastMod ? new Date(lastMod).getTime() : null;
+      const text    = await resp.text();
       let data;
-      try {
-        const text = await resp.text();
-        data = JSON.parse(text);
-      } catch(e) {
-        console.error('JSON parse error:', e);
-        return;
-      }
+      try { data = JSON.parse(text); } catch(e) { return; }
       if (!data || !Array.isArray(data.devices)) return;
 
-      // Always load on first poll, then only when data has changed
-      const firstLoad = lastScanTime === null;
-      const changed   = firstLoad || !mtime || !lastMtime ||
-                        mtime > lastMtime || data.scan_time !== lastScanTime;
+      const changed = !mtime || !lastMtime || mtime > lastMtime ||
+                      data.scan_time !== lastScanTime;
       if (!changed) return;
 
       lastMtime    = mtime || Date.now();
-      lastScanTime = data.scan_time;
+      lastScanTime = data.scan_time || null;
       devices      = data.devices;
-
-      if (data.scan_time) {
-        try {
-          document.getElementById('lastScan').textContent =
-            new Date(data.scan_time).toLocaleString('sv-SE');
-        } catch {}
-      }
       if (data.offline_threshold) offlineThreshold = data.offline_threshold;
-
-      // Fetch comments
+      if (data.scan_time) {
+        document.getElementById('lastScan').textContent =
+          new Date(data.scan_time).toLocaleString('sv-SE');
+      }
       try {
         const cr = await fetch(apiUrl('api/comments'), { cache: 'no-store' });
-        if (cr.ok) {
-          const ct = await cr.text();
-          comments = ct ? JSON.parse(ct) : {};
-        }
+        if (cr.ok) { const ct = await cr.text(); comments = ct ? JSON.parse(ct) : {}; }
       } catch {}
-
       renderTable();
-
-      // Hide loading indicator on first successful load
-      if (firstLoad) {
-        const loadingEl = document.getElementById('loadingMsg');
-        if (loadingEl) loadingEl.style.display = 'none';
-      }
     } catch {}
   }
 
