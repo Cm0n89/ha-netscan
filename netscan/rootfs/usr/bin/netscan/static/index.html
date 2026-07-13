@@ -333,24 +333,36 @@
     renderTable();
   }
 
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+  function setPlaceholder(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.placeholder = val;
+  }
+
   function applyTranslations() {
-    document.getElementById('btnScan').textContent    = t.scanNow;
-    document.getElementById('btnFetchAll').textContent= t.fetchAll;
-    document.getElementById('lbl-segment').textContent= t.segment;
-    document.getElementById('lbl-method').textContent = t.method;
-    document.getElementById('lbl-search').textContent = t.search;
-    document.getElementById('lbl-last-scan').textContent = t.lastScan;
-    document.getElementById('searchInput').placeholder = t.searchPh;
-    document.getElementById('statOnlineLbl').textContent  = t.online;
-    document.getElementById('statOfflineLbl').textContent = t.offline;
-    document.getElementById('statTotalLbl').textContent   = t.total;
-    document.getElementById('nmapStatus').textContent =
-      document.getElementById('nmapStatus').dataset.found === 'true' ? t.nmapFound : t.nmapMissing;
+    setText('btnScan',        t.scanNow);
+    setText('btnFetchAll',    t.fetchAll);
+    setText('lbl-segment',    t.segment);
+    setText('lbl-method',     t.method);
+    setText('lbl-search',     t.search);
+    setText('lbl-last-scan',  t.lastScan);
+    setPlaceholder('searchInput', t.searchPh);
+    setText('statOnlineLbl',  t.online);
+    setText('statOfflineLbl', t.offline);
+    setText('statTotalLbl',   t.total);
+    const ns = document.getElementById('nmapStatus');
+    if (ns) ns.textContent = ns.dataset.found === 'true' ? t.nmapFound : t.nmapMissing;
     // Table headers
-    const ths = document.querySelectorAll('th[data-key]');
-    const keys = ['ip','device_name','comment','vendor','hostname','mac'];
-    const lbls = [t.colIp,t.colName,t.colComment,t.colVendor,t.colHostname,t.colMac];
-    ths.forEach((th,i) => { if(lbls[i]) th.textContent = lbls[i]; });
+    document.querySelectorAll('th[data-key]').forEach(th => {
+      const map = {
+        ip: t.colIp, device_name: t.colName, comment: t.colComment,
+        vendor: t.colVendor, hostname: t.colHostname, mac: t.colMac
+      };
+      if (map[th.dataset.key]) th.textContent = map[th.dataset.key];
+    });
   }
 
   // ── State ──────────────────────────────────────────────────────────────────
