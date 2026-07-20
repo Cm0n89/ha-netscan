@@ -43,6 +43,9 @@
   .btn-scan:hover:not(:disabled)  { background: var(--accent2); color: var(--bg); }
   .btn-scan:disabled { opacity: 0.5; cursor: wait; }
   .btn-fetch-all { border-color: var(--accent); color: var(--accent); }
+  .btn-scan-offline { border-color: var(--warn); color: var(--warn); }
+  .btn-scan-offline:hover:not(:disabled) { background: var(--warn); color: var(--bg); }
+  .btn-scan-offline:disabled { opacity: 0.5; cursor: wait; }
   .btn-fetch-all:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .btn-fetch-all:disabled { opacity: 0.5; cursor: wait; }
   .label { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 0.15em; }
@@ -182,6 +185,7 @@
 <div class="toolbar">
   <button id="btnScan" class="btn btn-scan">⟳ SCAN NOW</button>
   <button id="btnFetchAll" class="btn btn-fetch-all" title="Fetch device names for all unnamed devices">⟳ FETCH ALL NAMES</button>
+  <button id="btnScanOffline" class="btn btn-scan-offline">⟳ TEST OFFLINE</button>
   <span class="label" id="lbl-segment">SEGMENT</span>
   <input id="segInput" class="seg-input" placeholder="192.168.1.0/24" />
   <span class="label" id="lbl-method">METOD</span>
@@ -246,6 +250,8 @@
   const T = {
     sv: {
       scanNow:        '⟳ SCANNA NU',
+      scanOffline:    '⟳ TESTA OFFLINE',
+      offlineDone:    (b,t) => '✓ ' + b + '/' + t + ' enheter online igen',
       scanning:       '⟳ SCANNAR…',
       fetchAll:       '⟳ HÄMTA ALLA NAMN',
       segment:        'SEGMENT',
@@ -284,6 +290,8 @@
     },
     en: {
       scanNow:        '⟳ SCAN NOW',
+      scanOffline:    '⟳ TEST OFFLINE',
+      offlineDone:    (b,t) => '✓ ' + b + '/' + t + ' devices back online',
       scanning:       '⟳ SCANNING…',
       fetchAll:       '⟳ FETCH ALL NAMES',
       segment:        'SEGMENT',
@@ -345,6 +353,7 @@
   function applyTranslations() {
     setText('btnScan',        t.scanNow);
     setText('btnFetchAll',    t.fetchAll);
+    setText('btnScanOffline', t.scanOffline);
     setText('lbl-segment',    t.segment);
     setText('lbl-method',     t.method);
     setText('lbl-search',     t.search);
@@ -382,6 +391,7 @@
   // ── Boot ───────────────────────────────────────────────────────────────────
   document.getElementById('btnScan').addEventListener('click', triggerScan);
   document.getElementById('btnFetchAll').addEventListener('click', fetchAllNames);
+  document.getElementById('btnScanOffline').addEventListener('click', scanOfflineDevices);
   document.getElementById('searchInput').addEventListener('input', e => {
     search = e.target.value.toLowerCase();
     renderTable();
@@ -661,6 +671,33 @@
     d.textContent = text;
     container.appendChild(d);
     container.scrollTop = container.scrollHeight;
+  }
+
+  // ── Test offline devices ─────────────────────────────────────────────────────
+  async function scanOfflineDevices() {
+    const offline = devices.filter(d => (d.offline_count || 0) > 0);
+    if (!offline.length) { showToast('No offline devices'); return; }
+
+    const btn = document.getElementById('btnScanOffline');
+    btn.disabled = true;
+    btn.textContent = '⟳ 0/' + offline.length;
+
+    let backOnline = 0;
+    for (let i = 0; i < offline.length; i++) {
+      const d = offline[i];
+      try {
+        const r    = await fetch(apiUrl('api/rescan_device') + '?ip=' + encodeURIComponent(d.ip));
+        const data = await r.json();
+        if (data.online) { d.offline_count = 0; backOnline++; }
+      } catch {}
+      btn.textContent = '⟳ ' + (i + 1) + '/' + offline.length;
+      renderTable();
+    }
+
+    btn.disabled = false;
+    btn.textContent = t.scanOffline;
+    showToast(t.offlineDone(backOnline, offline.length));
+    if (backOnline > 0) { lastMtime = null; lastScanTime = null; await loadData(); }
   }
 
   // ── Fetch all names ───────────────────────────────────────────────────────
