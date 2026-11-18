@@ -48,6 +48,8 @@
   .btn-scan-offline:disabled { opacity: 0.5; cursor: wait; }
   .btn-fetch-all:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .btn-fetch-all:disabled { opacity: 0.5; cursor: wait; }
+  .btn-export { border-color: var(--dim); color: var(--text); }
+  .btn-export:hover { background: var(--text); color: var(--bg); }
   .label { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 0.15em; }
   .seg-input { font-family: var(--mono); font-size: 12px; background: var(--bg);
                border: 1px solid #2a5a72; color: var(--accent); padding: 5px 8px; outline: none; width: 160px; }
@@ -186,6 +188,7 @@
   <button id="btnScan" class="btn btn-scan">⟳ SCAN NOW</button>
   <button id="btnFetchAll" class="btn btn-fetch-all" title="Fetch device names for all unnamed devices">⟳ FETCH ALL NAMES</button>
   <button id="btnScanOffline" class="btn btn-scan-offline">⟳ TEST OFFLINE</button>
+  <button id="btnExport" class="btn btn-export" title="Download the device list as a CSV file">⤓ EXPORT CSV</button>
   <span class="label" id="lbl-segment">SEGMENT</span>
   <input id="segInput" class="seg-input" placeholder="192.168.1.0/24" />
   <span class="label" id="lbl-method">METOD</span>
@@ -254,6 +257,9 @@
       offlineDone:    (b,t) => '✓ ' + b + '/' + t + ' enheter online igen',
       scanning:       '⟳ SCANNAR…',
       fetchAll:       '⟳ HÄMTA ALLA NAMN',
+      exportCsv:      '⤓ EXPORTERA CSV',
+      exportTip:      'Ladda ner enhetslistan som CSV-fil',
+      exportEmpty:    'Inga enheter att exportera',
       segment:        'SEGMENT',
       method:         'METOD',
       search:         'SÖK',
@@ -294,6 +300,9 @@
       offlineDone:    (b,t) => '✓ ' + b + '/' + t + ' devices back online',
       scanning:       '⟳ SCANNING…',
       fetchAll:       '⟳ FETCH ALL NAMES',
+      exportCsv:      '⤓ EXPORT CSV',
+      exportTip:      'Download the device list as a CSV file',
+      exportEmpty:    'No devices to export',
       segment:        'SEGMENT',
       method:         'METHOD',
       search:         'SEARCH',
@@ -354,6 +363,8 @@
     setText('btnScan',        t.scanNow);
     setText('btnFetchAll',    t.fetchAll);
     setText('btnScanOffline', t.scanOffline);
+    setText('btnExport',      t.exportCsv);
+    document.getElementById('btnExport').title = t.exportTip;
     setText('lbl-segment',    t.segment);
     setText('lbl-method',     t.method);
     setText('lbl-search',     t.search);
@@ -392,6 +403,7 @@
   document.getElementById('btnScan').addEventListener('click', triggerScan);
   document.getElementById('btnFetchAll').addEventListener('click', fetchAllNames);
   document.getElementById('btnScanOffline').addEventListener('click', scanOfflineDevices);
+  document.getElementById('btnExport').addEventListener('click', exportCsv);
   document.getElementById('searchInput').addEventListener('input', e => {
     search = e.target.value.toLowerCase();
     renderTable();
@@ -736,6 +748,24 @@
     btn.disabled = false;
     btn.textContent = t.fetchAll;
     showToast(t.fetchAllDone(found, targets.length));
+  }
+
+  // ── CSV export ─────────────────────────────────────────────────────────────
+  // Server builds the file; the current search filter is passed along so the
+  // export matches what is shown. Swedish UI uses ';' so Excel (sv locale)
+  // splits the columns correctly, English uses ','.
+  function exportCsv() {
+    if (!devices.length) { showToast(t.exportEmpty); return; }
+    const sep = lang === 'sv' ? ';' : ',';
+    const url = apiUrl('api/export.csv') +
+      '?sep=' + encodeURIComponent(sep) +
+      (search ? '&q=' + encodeURIComponent(search) : '');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   // ── Persist device_name to server ────────────────────────────────────────

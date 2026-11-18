@@ -396,6 +396,7 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         elif p == "/api/comments":            self._serve_comments()
         elif p == "/api/local_ip":            self._serve_local_ip()
         elif p == "/api/version":             self._serve_version()
+        elif p == "/api/export.csv":          self._serve_export_csv(path)
         elif p == "/api/update_device":       self._serve_update_device_get(path)
         elif p == "/api/save_comment":         self._serve_save_comment_get(path)
         elif p == "/api/remove_device":        self._serve_remove_device(path)
@@ -557,6 +558,83 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers(); self.wfile.write(data)
+
+    def _serve_export_csv(self, full_path):
+        """GET /api/export.csv?sep=;&q=text — download the device list as CSV.
+
+        sep: field separator, ',' (default) or ';' (for Excel with a Swedish/European locale).
+        q:   optional search filter, matched the same way as the search box in the UI.
+        """
+        import csv
+        import io
+        from urllib.parse import urlparse, parse_qs
+        qs  = parse_qs(urlparse(full_path).query)
+        sep = qs.get("sep", [","])[0]
+        if sep not in (",", ";", "\t"):
+            sep = ","
+        q = qs.get("q", [""])[0].strip().lower()
+
+        devices = []
+        if os.path.exists(RESULTS_FILE):
+            try:
+                with _results_lock:
+                    with open(RESULTS_FILE) as f:
+                        devices = json.load(f).get("devices", [])
+            except Exception as e:
+                print(f"[!] export: could not read results: {e}", flush=True)
+
+        comments = {}
+        try:
+            with open(COMMENTS_FILE) as f:
+                comments = json.load(f)
+        except Exception:
+            pass
+
+        def ip_key(d):
+            try:
+                return tuple(int(o) for o in d.get("ip", "").split("."))
+            except ValueError:
+                return (999,)
+
+        def cell(v):
+            # Neutralise spreadsheet formula injection (e.g. a comment starting with "=")
+            s = "" if v is None else str(v)
+            if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+                s = "'" + s
+            return s
+
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=sep, lineterminator="\r\n")
+        w.writerow(["status", "ip", "device_name", "comment", "vendor", "hostname",
+                    "mac", "offline_count", "first_seen", "last_seen"])
+        rows = 0
+        for d in sorted(devices, key=ip_key):
+            mac     = d.get("mac", "")
+            comment = comments.get(mac, d.get("comment", "")) if mac else d.get("comment", "")
+            if q:
+                hay = " ".join(str(x or "") for x in (
+                    d.get("ip"), mac, d.get("vendor"), d.get("hostname"),
+                    d.get("device_name"), comment)).lower()
+                if q not in hay:
+                    continue
+            off = d.get("offline_count", 0) or 0
+            w.writerow([cell(x) for x in (
+                "online" if off == 0 else "offline",
+                d.get("ip", ""), d.get("device_name", ""), comment,
+                d.get("vendor", ""), d.get("hostname", ""), mac, off,
+                d.get("first_seen", ""), d.get("last_seen", ""))])
+            rows += 1
+
+        # UTF-8 BOM so Excel shows å/ä/ö correctly
+        payload = ("﻿" + buf.getvalue()).encode("utf-8")
+        fname = f"netscan_{datetime.now().strftime('%Y-%m-%d_%H%M')}.csv"
+        self.send_response(200); self._cors()
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers(); self.wfile.write(payload)
+        print(f"[OK] CSV export: {rows} devices", flush=True)
 
     def _serve_local_ip(self):
         ip  = get_local_ip()
