@@ -140,6 +140,22 @@
   .td-mac  { font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: nowrap; }
   .td-host { font-family: var(--mono); font-size: 11px; }
   .td-host.empty { color: var(--dim); }
+  .td-ports { white-space: nowrap; }
+  .port-btn { font-family: var(--mono); font-size: 10px; padding: 2px 7px; background: transparent;
+              border: 1px solid var(--border); color: var(--dim); cursor: pointer; }
+  .port-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .port-btn.has-open { border-color: var(--accent); color: var(--accent); }
+  .port-btn.none-open { color: var(--accent2); border-color: rgba(0,255,157,0.3); }
+  .port-btn.running { opacity: 0.6; cursor: wait; }
+  tr.ports-row td { background: var(--bg2); padding: 8px 12px 12px 40px; border-bottom: 1px solid var(--border); }
+  .ports-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .port-chip { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border: 1px solid var(--border);
+               background: var(--panel); color: var(--text); text-decoration: none; }
+  a.port-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .port-chip b { color: var(--accent); font-weight: normal; }
+  .port-chip .ver { color: var(--dim); }
+  .ports-meta { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+  .ports-meta button { margin-left: 8px; }
 
   .comment-input { background: transparent; border: none; border-bottom: 1px solid transparent;
                    color: var(--text); font-family: 'Segoe UI',sans-serif; font-size: 13px;
@@ -230,12 +246,13 @@
         <th data-key="comment">COMMENT</th>
         <th onclick="sortBy('vendor')">VENDOR ↕</th>
         <th onclick="sortBy('hostname')">HOSTNAME ↕</th>
+        <th data-key="ports">PORTS</th>
         <th onclick="sortBy('mac')">MAC-ADRESS ↕</th>
       </tr>
     </thead>
     <tbody id="tbody">
       <tr id="loadingMsg">
-        <td colspan="7" style="text-align:center;padding:40px;font-family:monospace;color:var(--dim);letter-spacing:0.1em">
+        <td colspan="8" style="text-align:center;padding:40px;font-family:monospace;color:var(--dim);letter-spacing:0.1em">
           <div>⟳ Loading…</div>
           <button id="loadDataBtn" onclick="loadData()" style="display:none;margin-top:16px;font-family:monospace;font-size:12px;padding:8px 20px;border:1px solid #00d4ff;background:transparent;color:#00d4ff;cursor:pointer;letter-spacing:0.1em">
             ⟳ LOAD DATA
@@ -260,6 +277,16 @@
       exportCsv:      '⤓ EXPORTERA CSV',
       exportTip:      'Ladda ner enhetslistan som CSV-fil',
       exportEmpty:    'Inga enheter att exportera',
+      colPorts:       'PORTAR',
+      portScan:       '⌕ Skanna',
+      portScanning:   '⟳ skannar…',
+      portOpen:       (n) => n + ' öppna',
+      portNone:       'inga öppna',
+      portRescan:     '⟳ Skanna igen',
+      portScanned:    (ts, m) => 'Skannad ' + ts + ' (' + m + ')',
+      portNoneLong:   'Inga öppna portar bland de vanligaste portarna.',
+      portFailed:     (ip, e) => '⚠ Portskanning av ' + ip + ' misslyckades: ' + e,
+      portDone:       (ip, n) => '✓ ' + ip + ': ' + n + ' öppna portar',
       segment:        'SEGMENT',
       method:         'METOD',
       search:         'SÖK',
@@ -303,6 +330,16 @@
       exportCsv:      '⤓ EXPORT CSV',
       exportTip:      'Download the device list as a CSV file',
       exportEmpty:    'No devices to export',
+      colPorts:       'PORTS',
+      portScan:       '⌕ Scan',
+      portScanning:   '⟳ scanning…',
+      portOpen:       (n) => n + ' open',
+      portNone:       'none open',
+      portRescan:     '⟳ Scan again',
+      portScanned:    (ts, m) => 'Scanned ' + ts + ' (' + m + ')',
+      portNoneLong:   'No open ports among the most common ports.',
+      portFailed:     (ip, e) => '⚠ Port scan of ' + ip + ' failed: ' + e,
+      portDone:       (ip, n) => '✓ ' + ip + ': ' + n + ' open ports',
       segment:        'SEGMENT',
       method:         'METHOD',
       search:         'SEARCH',
@@ -379,7 +416,7 @@
     document.querySelectorAll('th[data-key]').forEach(th => {
       const map = {
         ip: t.colIp, device_name: t.colName, comment: t.colComment,
-        vendor: t.colVendor, hostname: t.colHostname, mac: t.colMac
+        vendor: t.colVendor, hostname: t.colHostname, mac: t.colMac, ports: t.colPorts
       };
       if (map[th.dataset.key]) th.textContent = map[th.dataset.key];
     });
@@ -398,6 +435,9 @@
   let commentTimers = {};
   let scanPollTimer = null;
   let lastLines   = 0;
+  let portResults = {};   // key (MAC or IP) -> {ip, scanned_at, method, ports:[...]}
+  let portJobs    = {};   // ip -> true while a port scan is running
+  let expandedIp  = null; // device whose port details are shown
 
   // ── Boot ───────────────────────────────────────────────────────────────────
   document.getElementById('btnScan').addEventListener('click', triggerScan);
@@ -497,6 +537,8 @@
         });
         if (cr.ok) { const ct = await cr.text(); comments = ct ? JSON.parse(ct) : {}; }
       } catch(e) { console.warn('[NetScan] comments fetch failed:', e); }
+
+      await loadPorts();
 
       // Hide loading message and render
       const loadingEl = document.getElementById('loadingMsg');
@@ -612,8 +654,10 @@
         '</td>' +
         '<td><span class="vendor-badge ' + (isUnk ? 'unknown' : '') + '">' + esc(vendor || 'Unknown') + '</span></td>' +
         '<td class="td-host ' + (d.hostname ? '' : 'empty') + '">' + esc(d.hostname || '—') + '</td>' +
+        '<td class="td-ports">' + portCell(d, isOnline) + '</td>' +
         '<td class="td-mac">' + esc(mac) + '</td>' +
-        '</tr>';
+        '</tr>' +
+        (expandedIp === d.ip ? portDetailRow(d) : '');
     }).join('');
 
   }
@@ -748,6 +792,107 @@
     btn.disabled = false;
     btn.textContent = t.fetchAll;
     showToast(t.fetchAllDone(found, targets.length));
+  }
+
+  // ── Port scan ──────────────────────────────────────────────────────────────
+  function portResultFor(d) {
+    return portResults[(d.mac || '').toUpperCase()] || portResults[d.ip] || null;
+  }
+
+  function portCell(d, isOnline) {
+    const ip = esc(d.ip), mac = esc(d.mac || '');
+    if (portJobs[d.ip]) {
+      return '<button class="port-btn running" disabled>' + t.portScanning + '</button>';
+    }
+    const r = portResultFor(d);
+    if (r) {
+      const n = (r.ports || []).length;
+      return '<button class="port-btn ' + (n ? 'has-open' : 'none-open') + '" data-ip="' + ip +
+             '" onclick="togglePorts(this.dataset.ip)">' + (n ? t.portOpen(n) : t.portNone) +
+             (expandedIp === d.ip ? ' ▴' : ' ▾') + '</button>';
+    }
+    if (!isOnline) return '<span style="color:var(--dim)">—</span>';
+    return '<button class="port-btn" data-ip="' + ip + '" data-mac="' + mac +
+           '" onclick="scanPorts(this.dataset.ip, this.dataset.mac)">' + t.portScan + '</button>';
+  }
+
+  function portDetailRow(d) {
+    const r = portResultFor(d);
+    if (!r) return '';
+    const httpLike = p => /^(ssl\/)?https?|http-|http$|proxmox|home-assistant|jellyfin|plex|webmin|victoriametrics|influxdb/.test(p.service || '');
+    const chips = (r.ports || []).map(p => {
+      const label = '<b>' + p.port + '</b>/' + esc(p.service || p.proto) +
+        ((p.product || p.version) ? ' <span class="ver">' + esc([p.product, p.version].filter(Boolean).join(' ')) + '</span>' : '');
+      if (httpLike(p)) {
+        const scheme = /ssl|https/.test(p.service || '') || p.port === 443 || p.port === 8006 ? 'https' : 'http';
+        return '<a class="port-chip" target="_blank" rel="noopener" href="' + scheme + '://' + esc(d.ip) + ':' + p.port + '">' + label + '</a>';
+      }
+      return '<span class="port-chip">' + label + '</span>';
+    }).join('');
+    const ts = r.scanned_at ? new Date(r.scanned_at).toLocaleString('sv-SE') : '';
+    return '<tr class="ports-row"><td colspan="8">' +
+      (chips ? '<div class="ports-list">' + chips + '</div>'
+             : '<div class="ports-meta" style="margin:6px 0">' + t.portNoneLong + '</div>') +
+      '<div class="ports-meta">' + t.portScanned(ts, esc(r.method || '')) +
+      (portJobs[d.ip] ? '' : '<button class="port-btn" data-ip="' + esc(d.ip) + '" data-mac="' + esc(d.mac || '') +
+        '" onclick="scanPorts(this.dataset.ip, this.dataset.mac)">' + t.portRescan + '</button>') +
+      '</div></td></tr>';
+  }
+
+  function togglePorts(ip) {
+    expandedIp = expandedIp === ip ? null : ip;
+    renderTable();
+  }
+
+  async function loadPorts() {
+    try {
+      const r = await fetch(apiUrl('api/ports'), { cache: 'no-store' });
+      if (!r.ok) return;
+      const data = await r.json();
+      portResults = data.results || {};
+      Object.entries(data.jobs || {}).forEach(([ip, j]) => {
+        if (j.running && !portJobs[ip]) { portJobs[ip] = true; pollPortJob(ip, ''); }
+      });
+    } catch (e) { console.warn('[NetScan] ports fetch failed:', e); }
+  }
+
+  async function scanPorts(ip, mac) {
+    if (portJobs[ip]) return;
+    try {
+      const r = await fetch(apiUrl('api/portscan/start') + '?ip=' + encodeURIComponent(ip) +
+                            '&mac=' + encodeURIComponent(mac || ''), { cache: 'no-store' });
+      const d = await r.json();
+      if (!d.ok && d.error !== 'already running') { showToast(t.portFailed(ip, d.error || r.status)); return; }
+      portJobs[ip] = true;
+      renderTable();
+      pollPortJob(ip, mac);
+    } catch (e) { showToast(t.portFailed(ip, e)); }
+  }
+
+  async function pollPortJob(ip, mac) {
+    for (let i = 0; i < 120; i++) {           // max ~4 minutes
+      await new Promise(res => setTimeout(res, 2000));
+      try {
+        const r = await fetch(apiUrl('api/portscan/status') + '?ip=' + encodeURIComponent(ip) +
+                              '&mac=' + encodeURIComponent(mac || ''), { cache: 'no-store' });
+        const d = await r.json();
+        if (d.job && d.job.running) continue;
+        delete portJobs[ip];
+        if (d.job && d.job.error) {
+          showToast(t.portFailed(ip, d.job.error));
+        } else {
+          await loadPorts();
+          const dev = devices.find(x => x.ip === ip) || { ip: ip, mac: mac };
+          const res = portResultFor(dev);
+          showToast(t.portDone(ip, res ? (res.ports || []).length : 0));
+          expandedIp = ip;
+        }
+        renderTable();
+        return;
+      } catch (e) { /* keep polling */ }
+    }
+    delete portJobs[ip];
+    renderTable();
   }
 
   // ── CSV export ─────────────────────────────────────────────────────────────

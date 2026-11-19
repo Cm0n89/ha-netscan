@@ -23,8 +23,10 @@ Network scanner built directly into Home Assistant. Displays all devices on your
 - **Automatic scanning** via nmap or built-in Python scanner
 - **Device names** — auto-fetched from Shelly, Sonos, ESPHome, UPnP, Philips Hue and more
 - **Comments** — add your own comments per device (linked to MAC address, survives rescans)
+- **Port scan per device** — click **⌕ Scan** in the PORTS column to check ~70 common ports (web, SSH, SMB, MQTT, ESPHome, Modbus, Sonos, HA, Proxmox, Jellyfin, Plex …). nmap also identifies product and version; web services become clickable links
+- **CSV export** — download the device list (including open ports) with **⤓ EXPORT CSV**
 - **Offline tracking** — devices that disappear are shown in yellow and red depending on how long they have been offline
-- **Built into HA** via Ingress — no extra port needed
+- **Built into HA** via Ingress — no extra port needed. The server only accepts requests that come through Ingress, so the API is not reachable from the rest of your network
 - **English / Swedish** language toggle in the UI
 - **Mobile-friendly** interface
 
@@ -45,3 +47,9 @@ When a device goes offline, action buttons appear:
 - Home Assistant OS or Supervised
 - nmap is installed automatically inside the Docker container
 - `host_network: true` is required to see the full network — configured automatically
+
+## Security
+
+The add-on runs on the host network so it can see the whole LAN. To keep the API private it only answers requests from the Home Assistant Ingress proxy (`172.30.32.2`); everything else gets `403`. Open NetScan from the Home Assistant sidebar.
+
+Only scan devices on networks you own or are allowed to test.

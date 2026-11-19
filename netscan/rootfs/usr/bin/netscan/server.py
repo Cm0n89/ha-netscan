@@ -31,6 +31,14 @@ STATIC_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static
 RESULTS_FILE  = os.path.join(DATA_DIR, "scan_results.json")
 COMMENTS_FILE = os.path.join(DATA_DIR, "comments.json")
 NMAP_XML      = os.path.join(DATA_DIR, "nmap_scan.xml")
+PORTS_FILE    = os.path.join(DATA_DIR, "ports.json")
+
+# Only HA Ingress (the Supervisor proxy) may talk to the server. The add-on runs on
+# the host network, so without this check the API is reachable from the whole LAN
+# without any Home Assistant login.
+TRUSTED_CLIENTS = {c.strip() for c in
+                   os.environ.get("NETSCAN_TRUSTED_CLIENTS", "172.30.32.2,127.0.0.1").split(",")
+                   if c.strip()}
 
 os.makedirs(DATA_DIR, exist_ok=True)
 print(f"[OK] Data dir  : {DATA_DIR}", flush=True)
@@ -66,6 +74,22 @@ def find_nmap():
             if r.returncode == 0: return path
         except Exception: continue
     return None
+
+def valid_ipv4(value):
+    """Return a normalised IPv4 address string, or None if value is not one."""
+    import ipaddress
+    try:
+        return str(ipaddress.IPv4Address(str(value).strip()))
+    except (ValueError, ipaddress.AddressValueError):
+        return None
+
+def valid_network(value):
+    """Return a normalised IPv4 network (CIDR) string, or None if value is not one."""
+    import ipaddress
+    try:
+        return str(ipaddress.IPv4Network(str(value).strip(), strict=False))
+    except (ValueError, ipaddress.AddressValueError, ipaddress.NetmaskValueError):
+        return None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Device name fetching
@@ -353,11 +377,19 @@ def run_python_scan(network):
         _scan_state.update(running=False, finished_at=datetime.now().isoformat())
 
 def start_scan(network, method="auto"):
-    network = network or detect_network()
+    raw = network or detect_network()
+    network = valid_network(raw)
+    if not network:
+        _log(f"[!] Invalid network, scan not started: {raw!r}")
+        with _scan_lock:
+            _scan_state.update(running=False, finished_at=datetime.now().isoformat(),
+                               error=f"invalid network: {raw}")
+        return False
     use_nmap = (method == "nmap" or (method == "auto" and find_nmap()))
     t = threading.Thread(target=run_nmap if use_nmap else run_python_scan,
                          args=(network,), daemon=True)
     t.start()
+    return True
 
 def auto_scan_loop():
     import time; time.sleep(15)
@@ -369,12 +401,142 @@ def auto_scan_loop():
         time.sleep(SCAN_INTERVAL * 60)
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Port scan (per device)
+# ─────────────────────────────────────────────────────────────────────────────
+# Common services plus ports that matter in a smart home (MQTT, ESPHome, Sonos,
+# Modbus, HA, Zigbee coordinators, cameras, printers, media servers, Proxmox …).
+PORTSCAN_PORTS = {
+    20: "ftp-data", 21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 53: "dns",
+    80: "http", 81: "http", 88: "kerberos", 110: "pop3", 111: "rpcbind",
+    135: "msrpc", 139: "netbios", 143: "imap", 389: "ldap", 443: "https",
+    445: "smb", 502: "modbus", 515: "printer", 548: "afp", 554: "rtsp",
+    631: "ipp", 873: "rsync", 993: "imaps", 995: "pop3s", 1080: "socks",
+    1400: "sonos", 1433: "mssql", 1883: "mqtt", 2049: "nfs",
+    3000: "http-alt", 3306: "mysql", 3389: "rdp", 4040: "http-alt",
+    4443: "https-alt", 5000: "http-alt", 5001: "https-alt", 5432: "postgres",
+    5357: "wsd", 5900: "vnc", 6053: "esphome",
+    6379: "redis", 6638: "zigbee-coord", 6668: "tuya", 7000: "http-alt",
+    7080: "http-alt", 8000: "http-alt", 8006: "proxmox", 8008: "http-alt",
+    8080: "http-proxy", 8081: "http-alt", 8086: "influxdb", 8088: "http-alt",
+    8096: "jellyfin", 8123: "home-assistant", 8181: "http-alt", 8428: "victoriametrics",
+    8443: "https-alt", 8554: "rtsp-alt", 8883: "mqtt-tls", 8888: "http-alt",
+    9000: "http-alt", 9090: "http-alt", 9100: "jetdirect", 9443: "https-alt",
+    10000: "webmin", 32400: "plex", 34567: "dvr", 49152: "upnp", 55443: "yeelight",
+}
+PORTSCAN_MAX_PARALLEL = 2
+
+_ports_lock   = threading.Lock()
+_ports_jobs   = {}   # ip -> {"running", "started_at", "finished_at", "error"}
+_ports_slots  = threading.Semaphore(PORTSCAN_MAX_PARALLEL)
+
+def _load_ports():
+    try:
+        with open(PORTS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_port_result(key, ip, ports, method):
+    with _ports_lock:
+        data = _load_ports()
+        data[key] = {"ip": ip, "scanned_at": datetime.now().isoformat(),
+                     "method": method, "ports": ports}
+        tmp = PORTS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, PORTS_FILE)
+
+def _portscan_nmap(nmap, ip):
+    port_list = ",".join(str(p) for p in sorted(PORTSCAN_PORTS))
+    cmd = [nmap, "-Pn", "-T4", "-sV", "--version-light", "--host-timeout", "120s",
+           "-p", "T:" + port_list, "-oX", "-", ip]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if r.returncode != 0:
+        raise RuntimeError(f"nmap exited {r.returncode}: {r.stderr.strip()[:200]}")
+    ports = []
+    root = ET.fromstring(r.stdout)
+    for port in root.iter("port"):
+        st = port.find("state")
+        if st is None or st.get("state") != "open":
+            continue
+        svc = port.find("service")
+        num = int(port.get("portid", 0))
+        name = (svc.get("name") if svc is not None else "") or PORTSCAN_PORTS.get(num, "")
+        tunnel = svc.get("tunnel", "") if svc is not None else ""
+        ports.append({
+            "port":    num,
+            "proto":   port.get("protocol", "tcp"),
+            "service": ("ssl/" + name) if tunnel == "ssl" and name else name,
+            "product": (svc.get("product", "") if svc is not None else ""),
+            "version": (svc.get("version", "") if svc is not None else ""),
+        })
+    return ports
+
+def _portscan_python(ip):
+    import concurrent.futures
+    def probe(port):
+        try:
+            with socket.create_connection((ip, port), timeout=1.0):
+                return port
+        except Exception:
+            return None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
+        open_ports = [p for p in ex.map(probe, sorted(PORTSCAN_PORTS)) if p]
+    return [{"port": p, "proto": "tcp", "service": PORTSCAN_PORTS.get(p, ""),
+             "product": "", "version": ""} for p in open_ports]
+
+def _run_portscan(ip, key):
+    with _ports_slots:
+        try:
+            nmap = find_nmap()
+            if nmap:
+                ports, method = _portscan_nmap(nmap, ip), "nmap"
+            else:
+                ports, method = _portscan_python(ip), "python"
+            _save_port_result(key, ip, ports, method)
+            print(f"[OK] Port scan {ip}: {len(ports)} open ({method})", flush=True)
+            err = None
+        except Exception as e:
+            print(f"[!] Port scan {ip} failed: {e}", flush=True)
+            err = str(e)
+        with _ports_lock:
+            _ports_jobs[ip] = {"running": False, "started_at": _ports_jobs.get(ip, {}).get("started_at"),
+                               "finished_at": datetime.now().isoformat(), "error": err}
+
+def start_portscan(ip, mac=""):
+    """Start a background port scan. Returns (ok, error)."""
+    with _ports_lock:
+        if _ports_jobs.get(ip, {}).get("running"):
+            return False, "already running"
+        _ports_jobs[ip] = {"running": True, "started_at": datetime.now().isoformat(),
+                           "finished_at": None, "error": None}
+    key = mac.upper() if mac else ip
+    threading.Thread(target=_run_portscan, args=(ip, key), daemon=True).start()
+    return True, None
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HTTP Server — Ingress aware
 # ─────────────────────────────────────────────────────────────────────────────
 class ScanHandler(http.server.SimpleHTTPRequestHandler):
 
+    def _client_allowed(self):
+        """Reject everything that does not come through HA Ingress."""
+        client = self.client_address[0] if self.client_address else ""
+        if client.startswith("::ffff:"):
+            client = client[7:]
+        if client in TRUSTED_CLIENTS:
+            return True
+        print(f"[!] Rejected request from {client}: {self.command} "
+              f"{self.path.split('?')[0]}", flush=True)
+        self.send_response(403)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"NetScan is only available through Home Assistant Ingress.\n")
+        return False
+
     def do_OPTIONS(self):
-        self.send_response(200); self._cors(); self.end_headers()
+        if not self._client_allowed(): return
+        self.send_response(204); self.end_headers()
 
     def _strip_ingress(self, path):
         """Strip HA ingress prefix: /api/hassio_ingress/<token>/foo -> /foo"""
@@ -384,6 +546,7 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         return path
 
     def do_GET(self):
+        if not self._client_allowed(): return
         path = self._strip_ingress(self.path)
         p    = path.split("?")[0].rstrip("/") or "/"
 
@@ -397,6 +560,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         elif p == "/api/local_ip":            self._serve_local_ip()
         elif p == "/api/version":             self._serve_version()
         elif p == "/api/export.csv":          self._serve_export_csv(path)
+        elif p == "/api/ports":               self._serve_ports()
+        elif p == "/api/portscan/start":      self._serve_portscan_start(path)
+        elif p == "/api/portscan/status":     self._serve_portscan_status(path)
         elif p == "/api/update_device":       self._serve_update_device_get(path)
         elif p == "/api/save_comment":         self._serve_save_comment_get(path)
         elif p == "/api/remove_device":        self._serve_remove_device(path)
@@ -409,6 +575,7 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
             self._serve_static(p.lstrip("/"))
 
     def do_POST(self):
+        if not self._client_allowed(): return
         path = self._strip_ingress(self.path)
         p    = path.split("?")[0]
         if   p == "/api/scan/start":       self._handle_scan_start()
@@ -489,9 +656,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         from urllib.parse import urlparse, parse_qs
         import subprocess as sp
         qs = parse_qs(urlparse(full_path).query)
-        ip = qs.get("ip", [""])[0].strip()
+        ip = valid_ipv4(qs.get("ip", [""])[0])
         if not ip:
-            self._json({"ok": False, "error": "missing ip"}); return
+            self._json({"ok": False, "error": "invalid ip"}, 400); return
         try:
             r = sp.run(["ping", "-c", "2", "-W", "1", ip], capture_output=True)
             online = r.returncode == 0
@@ -522,8 +689,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         with _scan_lock:
             if _scan_state["running"]:
                 self._json({"ok": False, "error": "Scan already running"}); return
-        start_scan(network, method)
-        self._json({"ok": True, "network": network or detect_network()})
+        if not start_scan(network, method):
+            self._json({"ok": False, "error": "invalid network"}, 400); return
+        self._json({"ok": True, "network": valid_network(network or detect_network())})
 
     def _serve_version(self):
         self._json({"version": APP_VERSION})
@@ -535,11 +703,11 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
     def _serve_device_name(self, full_path):
         from urllib.parse import urlparse, parse_qs
         qs = parse_qs(urlparse(full_path).query)
-        ip = qs.get("ip", [""])[0].strip()
+        ip = valid_ipv4(qs.get("ip", [""])[0])
         ts = datetime.now().strftime("%H:%M:%S")
         print(f"[{ts}] device_name << {ip}", flush=True)
         if not ip:
-            self._json({"error": "missing ip", "name": ""}); return
+            self._json({"error": "invalid ip", "name": ""}, 400); return
         try:
             name = fetch_device_name(ip)
         except Exception as e:
@@ -605,8 +773,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
 
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=sep, lineterminator="\r\n")
+        port_results = _load_ports()
         w.writerow(["status", "ip", "device_name", "comment", "vendor", "hostname",
-                    "mac", "offline_count", "first_seen", "last_seen"])
+                    "mac", "open_ports", "offline_count", "first_seen", "last_seen"])
         rows = 0
         for d in sorted(devices, key=ip_key):
             mac     = d.get("mac", "")
@@ -618,10 +787,14 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
                 if q not in hay:
                     continue
             off = d.get("offline_count", 0) or 0
+            pr  = port_results.get(mac) or port_results.get(d.get("ip", "")) or {}
+            open_ports = " ".join(
+                f"{x['port']}/{x['service']}" if x.get("service") else str(x["port"])
+                for x in pr.get("ports", []))
             w.writerow([cell(x) for x in (
                 "online" if off == 0 else "offline",
                 d.get("ip", ""), d.get("device_name", ""), comment,
-                d.get("vendor", ""), d.get("hostname", ""), mac, off,
+                d.get("vendor", ""), d.get("hostname", ""), mac, open_ports, off,
                 d.get("first_seen", ""), d.get("last_seen", ""))])
             rows += 1
 
@@ -635,6 +808,40 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers(); self.wfile.write(payload)
         print(f"[OK] CSV export: {rows} devices", flush=True)
+
+    def _serve_ports(self):
+        """GET /api/ports — saved port scan results keyed by MAC (or IP)."""
+        with _ports_lock:
+            data = _load_ports()
+            jobs = {ip: dict(j) for ip, j in _ports_jobs.items()}
+        self._json({"results": data, "jobs": jobs})
+
+    def _serve_portscan_start(self, full_path):
+        """GET /api/portscan/start?ip=x&mac=y — scan common ports on one device."""
+        from urllib.parse import urlparse, parse_qs
+        qs  = parse_qs(urlparse(full_path).query)
+        ip  = valid_ipv4(qs.get("ip", [""])[0])
+        mac = qs.get("mac", [""])[0].strip().upper()
+        if not ip:
+            self._json({"ok": False, "error": "invalid ip"}, 400); return
+        if mac and not re.fullmatch(r"[0-9A-F]{2}(:[0-9A-F]{2}){5}", mac):
+            self._json({"ok": False, "error": "invalid mac"}, 400); return
+        ok, err = start_portscan(ip, mac)
+        self._json({"ok": ok, "error": err, "ip": ip})
+
+    def _serve_portscan_status(self, full_path):
+        """GET /api/portscan/status?ip=x — job state plus the saved result."""
+        from urllib.parse import urlparse, parse_qs
+        qs  = parse_qs(urlparse(full_path).query)
+        ip  = valid_ipv4(qs.get("ip", [""])[0])
+        mac = qs.get("mac", [""])[0].strip().upper()
+        if not ip:
+            self._json({"ok": False, "error": "invalid ip"}, 400); return
+        with _ports_lock:
+            job  = dict(_ports_jobs.get(ip, {"running": False}))
+            data = _load_ports()
+        self._json({"ok": True, "ip": ip, "job": job,
+                    "result": data.get(mac) or data.get(ip)})
 
     def _serve_local_ip(self):
         ip  = get_local_ip()
@@ -722,8 +929,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         with _scan_lock:
             if _scan_state["running"]:
                 self._json({"ok": False, "error": "Scan already running"}); return
-        start_scan(network, method)
-        self._json({"ok": True, "network": network or detect_network()})
+        if not start_scan(network, method):
+            self._json({"ok": False, "error": "invalid network"}, 400); return
+        self._json({"ok": True, "network": valid_network(network or detect_network())})
 
     def _handle_save_comments(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -745,9 +953,9 @@ class ScanHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers(); self.wfile.write(payload)
 
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Ingress-Path")
+        # No CORS headers: the UI is served from the same origin through Ingress,
+        # so other web pages must not be allowed to read the API.
+        pass
 
     def log_message(self, fmt, *args):
         first = str(args[0]) if args else ""
